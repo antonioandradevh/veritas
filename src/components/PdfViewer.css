@@ -1,0 +1,49 @@
+.pdf-study-container {
+  background: #0f0f0f;
+  color: #fff;
+  font-family: Inter, sans-serif;
+}
+
+.pdf-scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) transparent;
+}
+
+.pdf-scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pdf-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pdf-scroll-area::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 10px;
+}
+
+.pdf-placeholder {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #0a0a0a;
+  color: #fff;
+  font-weight: bold;
+}
+
+/* Ensure text selection works well in dark mode */
+.pdf-study-container .react-pdf__Page__textContent ::selection {
+  background: rgba(138, 43, 226, 0.4);
+  color: #fff;
+}
+
+/* Fix for annotation layer in dark mode */
+.react-pdf__Page__annotations {
+  mix-blend-mode: multiply;
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.pdf-study-container .react-pdf__Page {
+  background-color: #fff;
+}

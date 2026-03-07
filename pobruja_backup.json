@@ -1,0 +1,243 @@
+{
+  "subjects": [
+    {
+      "id": "1772187992032",
+      "name": "Português",
+      "topics": [
+        {
+          "id": "1772188060053",
+          "name": "Ortografia",
+          "status": "completed",
+          "hoursSpent": 0.8333333333333333,
+          "questionsDone": 33,
+          "questionsCorrect": 22,
+          "materialUrl": "local-1772188060053",
+          "materials": [
+            {
+              "id": "5a009d59-2e35-41d2-89d6-dde1499ff69e",
+              "name": "curso-302750-aula-00-4b02-completo.pdf",
+              "url": "local-5a009d59-2e35-41d2-89d6-dde1499ff69e"
+            }
+          ],
+          "summaryLocation": "Z:\\concurso\\pcdf-perito\\Língua Portuguesa\\Resumo Português.docx"
+        },
+        {
+          "id": "1772198424584",
+          "name": "Classe de Palavras",
+          "status": "completed",
+          "hoursSpent": 0.05,
+          "questionsDone": 0,
+          "questionsCorrect": 0,
+          "materials": [
+            {
+              "id": "5dc65974-aa3a-49d0-a203-80dfa2aa570c",
+              "name": "curso-302750-aula-01-da01-completo.pdf",
+              "url": "local-5dc65974-aa3a-49d0-a203-80dfa2aa570c"
+            }
+          ]
+        }
+      ],
+      "rating": 5
+    },
+    {
+      "id": "1772188082124",
+      "name": "Redes",
+      "topics": [
+        {
+          "id": "1772188119456",
+          "name": "ATM",
+          "status": "completed",
+          "hoursSpent": 0.7166666666666667,
+          "questionsDone": 111,
+          "questionsCorrect": 76,
+          "materialUrl": "local-1772188119456",
+          "materials": [
+            {
+              "id": "a5b77bcf-8889-431e-a7f6-0804b2f1024c",
+              "name": "curso-303101-aula-03-95c3-completo.pdf",
+              "url": "local-a5b77bcf-8889-431e-a7f6-0804b2f1024c"
+            }
+          ],
+          "summaryLocation": "Z:\\concurso\\pcdf-perito\\Redes e Segurança\\Redes e Segurança.docx"
+        }
+      ],
+      "rating": 5
+    },
+    {
+      "id": "1772204006524",
+      "name": "Direito Constitucional ",
+      "topics": [
+        {
+          "id": "1772273746411",
+          "name": "Princípios Fundamentais ",
+          "status": "todo",
+          "hoursSpent": 0,
+          "questionsDone": 0,
+          "questionsCorrect": 0,
+          "materials": [
+            {
+              "id": "14a32a99-dc2f-4634-bef3-1fcd5697621b",
+              "name": "curso-302953-aula-01-920a-completo.pdf",
+              "url": "local-14a32a99-dc2f-4634-bef3-1fcd5697621b"
+            }
+          ]
+        }
+      ],
+      "rating": 4
+    },
+    {
+      "id": "1772204015696",
+      "name": "Banco de Dados",
+      "topics": [
+        {
+          "id": "1772273660599",
+          "name": "Introdução a Banco de Dados",
+          "status": "base_done",
+          "hoursSpent": 0.7666666666666667,
+          "questionsDone": 0,
+          "questionsCorrect": 0,
+          "materials": []
+        },
+        {
+          "id": "1772278879859",
+          "name": "Administração de Dados, Projetos de Banco de Dados e Modelagem Conceitual",
+          "status": "todo",
+          "hoursSpent": 0,
+          "questionsDone": 0,
+          "questionsCorrect": 0,
+          "materials": [
+            {
+              "id": "97284bf5-e96f-431d-bc24-c3ea5ea23659",
+              "name": "curso-371975-aula-03-025c-completo.pdf",
+              "url": "local-97284bf5-e96f-431d-bc24-c3ea5ea23659"
+            }
+          ]
+        }
+      ],
+      "rating": 3
+    },
+    {
+      "id": "1772204028418",
+      "name": "Direito Administrativo",
+      "topics": [],
+      "rating": 4
+    },
+    {
+      "id": "1772204035042",
+      "name": "Direito Penal",
+      "topics": [],
+      "rating": 4
+    },
+    {
+      "id": "1772204042295",
+      "name": "Direito Processual Penal",
+      "topics": [],
+      "rating": 4
+    },
+    {
+      "id": "1772204047620",
+      "name": "RLM",
+      "topics": [],
+      "rating": 5
+    },
+    {
+      "id": "1772204058389",
+      "name": "Legislação Especial",
+      "topics": [],
+      "rating": 2
+    },
+    {
+      "id": "1772204062358",
+      "name": "LODF",
+      "topics": [],
+      "rating": 2
+    },
+    {
+      "id": "1772204073492",
+      "name": "Aspectos Geopolíticos do DF",
+      "topics": [],
+      "rating": 2
+    },
+    {
+      "id": "1772204077128",
+      "name": "Engenharia de Software",
+      "topics": [],
+      "rating": 5
+    },
+    {
+      "id": "1772204082339",
+      "name": "Arq. de Computadores",
+      "topics": [],
+      "rating": 5
+    },
+    {
+      "id": "1772204088350",
+      "name": "Desenv. de Software",
+      "topics": [],
+      "rating": 3
+    }
+  ],
+  "studySessions": [
+    {
+      "date": "2026-02-27",
+      "count": 94
+    },
+    {
+      "date": "2026-02-28",
+      "count": 48
+    }
+  ],
+  "userProfile": {
+    "name": "Antônio",
+    "targetJob": "Perito Criminal PC-DF",
+    "weeklyHours": 30
+  },
+  "cycleConfig": {
+    "numDays": 10,
+    "schedule": {
+      "1": [
+        "Português",
+        "Redes"
+      ],
+      "2": [
+        "Direito Constitucional ",
+        "Banco de Dados"
+      ],
+      "3": [
+        "Direito Administrativo",
+        "Engenharia de Software"
+      ],
+      "4": [
+        "Direito Penal",
+        "Arq. de Computadores"
+      ],
+      "5": [
+        "Direito Processual Penal",
+        "Desenv. de Software"
+      ],
+      "6": [
+        "Redes",
+        "RLM"
+      ],
+      "7": [
+        "Legislação Especial",
+        "Banco de Dados"
+      ],
+      "8": [
+        "Engenharia de Software",
+        "LODF"
+      ],
+      "9": [
+        "Arq. de Computadores",
+        "Aspectos Geopolíticos do DF"
+      ],
+      "10": [
+        "🏆 REVISÃO",
+        "Desenv. de Software"
+      ]
+    },
+    "startDate": "2026-02-27T12:36:52.848Z",
+    "simInterval": 30
+  },
+  "summaries": {}
+}
