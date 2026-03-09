@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import localforage from 'localforage';
 import type { Essay } from '../App';
@@ -10,9 +10,10 @@ interface RedacaoViewProps {
   essays: Essay[];
   setEssays: React.Dispatch<React.SetStateAction<Essay[]>>;
   onAddStudyTime: (min: number) => void;
+  peersData?: Record<string, any>;
 }
 
-export default function RedacaoView({ essays, setEssays, onAddStudyTime }: RedacaoViewProps) {
+export default function RedacaoView({ essays, setEssays, onAddStudyTime, peersData = {} }: RedacaoViewProps) {
   const [activeEssay, setActiveEssay] = useState<Essay | null>(null);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [time, setTime] = useState(0);
@@ -80,12 +81,36 @@ export default function RedacaoView({ essays, setEssays, onAddStudyTime }: Redac
   };
 
   const chartData = useMemo(() => {
-    return [...essays].reverse().map(e => ({
-      date: format(new Date(e.date), 'dd/MM'),
-      score: e.score,
-      title: e.title
-    }));
-  }, [essays]);
+    const allDates = new Set<string>();
+    
+    // Pegamos todas as datas únicas (apenas a parte YYYY-MM-DD para agrupar por dia)
+    essays.forEach(e => allDates.add(e.date.slice(0, 10)));
+    Object.values(peersData).forEach(p => {
+      (p.essaysHistory || []).forEach((e: any) => allDates.add(e.date.slice(0, 10)));
+    });
+
+    // Ordenamos cronologicamente
+    const sortedDates = Array.from(allDates).sort();
+
+    return sortedDates.map(fullDate => {
+      const displayDate = format(new Date(fullDate + 'T12:00:00'), 'dd/MM');
+      const res: any = { date: displayDate };
+      
+      const myEssaysOnDate = essays.filter(e => e.date.startsWith(fullDate));
+      if (myEssaysOnDate.length > 0) {
+        res['Você'] = Math.round(myEssaysOnDate.reduce((a, b) => a + b.score, 0) / myEssaysOnDate.length);
+      }
+
+      Object.values(peersData).forEach(p => {
+        const peerEssaysOnDate = (p.essaysHistory || []).filter((e: any) => e.date.startsWith(fullDate));
+        if (peerEssaysOnDate.length > 0) {
+          res[p.name || p.username] = Math.round(peerEssaysOnDate.reduce((a: number, b: any) => a + b.score, 0) / peerEssaysOnDate.length);
+        }
+      });
+
+      return res;
+    });
+  }, [essays, peersData]);
 
   if (activeEssay) {
     return (
@@ -163,7 +188,20 @@ export default function RedacaoView({ essays, setEssays, onAddStudyTime }: Redac
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-dim)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-dim)', fontSize: 12 }} />
                   <RechartsTooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--primary)', borderRadius: '12px' }} />
-                  <Line type="monotone" dataKey="score" stroke="var(--primary-light)" strokeWidth={3} dot={{ fill: 'var(--primary-light)', r: 6 }} />
+                  <Legend />
+                  <Line name="Você" type="monotone" dataKey="Você" stroke="var(--primary-light)" strokeWidth={3} dot={{ fill: 'var(--primary-light)', r: 6 }} connectNulls />
+                  {Object.values(peersData).map((p: any, i) => (
+                    <Line 
+                      key={p.id} 
+                      name={p.name || p.username} 
+                      type="monotone" 
+                      dataKey={p.name || p.username} 
+                      stroke={[`#ff00ff`, `#00f2ff`, `#ffd700`, `#ff4d4d`][i % 4]} 
+                      strokeWidth={2} 
+                      dot={{ r: 4 }} 
+                      connectNulls
+                    />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             ) : (

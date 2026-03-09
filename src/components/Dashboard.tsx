@@ -1,7 +1,7 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import localforage from 'localforage';
-import type { Subject, Task, CycleConfig, TopicMaterial } from '../App';
+import type { Subject, Task, CycleConfig, UserProfile } from '../App';
 import PdfThumbnail from './PdfThumbnail';
 
 interface DashboardProps {
@@ -10,6 +10,9 @@ interface DashboardProps {
   setSubjects: React.Dispatch<React.SetStateAction<Subject[]>>;
   cycleConfig: CycleConfig;
   setCycleConfig: React.Dispatch<React.SetStateAction<CycleConfig>>;
+  userProfile: UserProfile;
+  setUserProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
+  onViewChange?: (view: any) => void;
 }
 
 export default function Dashboard({ 
@@ -17,9 +20,14 @@ export default function Dashboard({
   onStartTask, 
   setSubjects, 
   cycleConfig,
-  setCycleConfig 
-}: DashboardProps) {
+  setCycleConfig,
+  userProfile,
+  setUserProfile,
+  onViewChange,
+  peersData = {}
+}: DashboardProps & { peersData?: Record<string, any> }) {
   const [newSubjectName, setNewSubjectName] = useState('');
+  const [prevMinutes, setPrevMinutes] = useState('');
   const [newTopicName, setNewTopicName] = useState('');
   const [viewingSubjectId, setViewingSubjectId] = useState<string | null>(null);
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
@@ -89,72 +97,58 @@ export default function Dashboard({
     [subjects, activeSubjectsToday]
   );
 
-  const [subjectPdfStats, setSubjectPdfStats] = useState<{ name: string, url: string, topic: any, densityRank: { page: number, score: number }[] }[]>([]);
+  const isRevisionDay = activeSubjectsToday.includes('🏆 REVISÃO');
 
   const viewingSubject = useMemo(() => 
     subjects.find(s => s.id === viewingSubjectId), 
     [subjects, viewingSubjectId]
   );
 
-  useEffect(() => {
-    const loadSubjectPdfStats = async () => {
-      if (!viewingSubject) return;
-      try {
-        const keys = await localforage.keys();
-        const studyKeys = keys.filter(k => k.startsWith('study-data-'));
-        const stats: any[] = [];
+  const globalAccuracy = useMemo(() => {
+    const done = subjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsDone || 0), 0) || 0), 0);
+    const hits = subjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsCorrect || 0), 0) || 0), 0);
+    return done > 0 ? (hits / done) * 100 : 0;
+  }, [subjects]);
 
-        for (const key of studyKeys) {
-          const materialId = key.replace('study-data-', '');
-          
-          let foundMaterial: TopicMaterial | null = null;
-          let foundTopic: any = null;
+  const totalMinutesAll = useMemo(() => subjects.reduce((acc, s) => acc + (s.topics || []).reduce((tAcc, t) => tAcc + (t.minutesSpent || 0), 0), 0), [subjects]);
 
-          viewingSubject.topics.forEach(t => {
-            const m = (t.materials || []).find(mat => mat.id === materialId);
-            if (m) {
-              foundMaterial = m;
-              foundTopic = t;
-            }
-          });
-          
-          if (foundMaterial && foundTopic) {
-            const data: any = await localforage.getItem(key);
-            if (data && data.pageStats) {
-              const densityRank = Object.values(data.pageStats)
-                .map((ps: any) => {
-                  // Densidade = tempo + grifos
-                  const hCount = (data.highlights || []).filter((h: any) => h.position.pageNumber === ps.pageNumber).length;
-                  return {
-                    page: ps.pageNumber,
-                    score: ps.timeSpent + (30 * hCount)
-                  };
-                })
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 5);
-
-              stats.push({ 
-                name: (foundMaterial as TopicMaterial).name, 
-                url: (foundMaterial as TopicMaterial).url,
-                topic: foundTopic,
-                densityRank 
-              });
-            }
-          }
-        }
-        setSubjectPdfStats(stats);
-      } catch (e) { console.error('Error loading subject PDF stats', e); }
-    };
-    loadSubjectPdfStats();
-  }, [viewingSubjectId, subjects]);
+  const ranking = useMemo(() => {
+    const players = [
+      { id: 'me', name: userProfile.name, username: userProfile.username, totalHours: totalMinutesAll / 60, accuracy: globalAccuracy },
+      ...Object.values(peersData).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        username: p.username,
+        totalHours: p.totalHours,
+        accuracy: p.accuracy
+      }))
+    ];
+    return players.sort((a, b) => b.totalHours - a.totalHours);
+  }, [userProfile, peersData, totalMinutesAll, globalAccuracy]);
 
   const handleAddSubject = () => {
     if (!newSubjectName) {
       toast.error('Dê um nome à matéria!');
       return;
     }
-    setSubjects(prev => [...(prev || []), { id: Date.now().toString(), name: newSubjectName, topics: [] }]);
+    const topicId = Date.now().toString() + "-init";
+    const initialTopic = prevMinutes ? [{
+      id: topicId,
+      name: 'Horas Migradas (Outra Plataforma)',
+      status: 'completed' as const,
+      minutesSpent: Number(prevMinutes),
+      questionsDone: 0,
+      questionsCorrect: 0,
+      materials: []
+    }] : [];
+
+    setSubjects(prev => [...(prev || []), { 
+      id: Date.now().toString(), 
+      name: newSubjectName, 
+      topics: initialTopic 
+    }]);
     setNewSubjectName('');
+    setPrevMinutes('');
     toast.success(`Matéria ${newSubjectName} adicionada!`);
   };
 
@@ -427,9 +421,31 @@ export default function Dashboard({
           <h1 style={{fontSize: '36px', fontWeight: '900', color: '#fff'}}>
             {viewingSubject ? `📖 ${viewingSubject.name}` : "🛡️ Painel de Estudos"}
           </h1>
-          <p style={{ color: 'var(--primary-light)', fontWeight: 'bold', marginTop: '5px' }}>
-            {viewingSubject ? "DETALHAMENTO DO EDITAL" : `DIA ${currentCycleDay} DO CICLO`}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
+            <p style={{ color: 'var(--primary-light)', fontWeight: 'bold', margin: 0 }}>
+              {viewingSubject ? "DETALHAMENTO DO EDITAL" : `DIA ${currentCycleDay} DO CICLO`}
+            </p>
+            {!viewingSubject && (
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '2px 8px', fontSize: '10px', height: '20px' }}
+                onClick={() => {
+                  const newDay = window.prompt(`Definir dia atual do ciclo (1 a ${cycleConfig.numDays}):`, currentCycleDay.toString());
+                  if (newDay !== null) {
+                    const dayNum = parseInt(newDay);
+                    if (!isNaN(dayNum) && dayNum >= 1 && dayNum <= (cycleConfig.numDays || 10)) {
+                      setCycleConfig(prev => ({ ...prev, currentDay: dayNum }));
+                      toast.success(`Ciclo ajustado para o Dia ${dayNum}`);
+                    } else {
+                      toast.error('Dia inválido para o ciclo atual');
+                    }
+                  }
+                }}
+              >
+                ALTERAR ⚙️
+              </button>
+            )}
+          </div>
         </div>
         <div style={{textAlign: 'right', display: 'flex', gap: '15px'}}>
           {viewingSubject ? (
@@ -457,6 +473,45 @@ export default function Dashboard({
 
       {!viewingSubject ? (
         <>
+          {/* RANKING GERAL */}
+          <h2 style={{ fontSize: '18px', color: '#fff', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '24px' }}>🏆</span> RANKING DO GRUPO
+          </h2>
+          <div className="card" style={{ padding: '0', overflow: 'hidden', marginBottom: '40px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>POS</th>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>GUERREIRO</th>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>HORAS TOTAIS</th>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>PRECISÃO GLOBAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((p, i) => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', background: p.id === 'me' ? 'rgba(138, 43, 226, 0.05)' : 'transparent' }}>
+                    <td style={{ padding: '20px', fontWeight: '900', color: i === 0 ? '#ffca28' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : 'var(--text-dim)' }}>
+                      #{i + 1}
+                    </td>
+                    <td style={{ padding: '20px' }}>
+                      <div style={{ fontWeight: 'bold', color: '#fff' }}>{p.name} {p.id === 'me' && ' (Você)'}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--primary-light)' }}>@{p.username}</div>
+                    </td>
+                    <td style={{ padding: '20px', fontWeight: 'bold', color: 'var(--success)' }}>{p.totalHours.toFixed(1)}h</td>
+                    <td style={{ padding: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', maxWidth: '100px' }}>
+                          <div style={{ width: `${p.accuracy}%`, height: '100%', background: 'var(--primary-light)', borderRadius: '3px' }} />
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{p.accuracy.toFixed(1)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           {/* SEÇÃO: METAS DO DIA */}
           <h2 style={{ fontSize: '18px', color: 'var(--primary-light)', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '24px' }}>🎯</span> METAS DE HOJE
@@ -467,14 +522,42 @@ export default function Dashboard({
             gap: '24px', 
             marginBottom: '50px' 
           }}>
-            {subjectsToday.length > 0 ? subjectsToday.map(s => renderSubjectCard(s, true)) : (
-              <div style={{ gridColumn: '1/-1', padding: '30px', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px dashed rgba(255,255,255,0.1)', textAlign: 'center', color: 'var(--text-dim)' }}>
-                Nenhuma matéria escalada para hoje.
+            {isRevisionDay && (
+              <div 
+                className="card" 
+                onClick={() => onViewChange?.('revisao')}
+                style={{ 
+                  padding: '28px', 
+                  cursor: 'pointer',
+                  border: '2px solid var(--accent)',
+                  background: 'linear-gradient(145deg, var(--bg-surface) 0%, rgba(255, 0, 255, 0.05) 100%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  minHeight: '220px',
+                  textAlign: 'center',
+                  transition: '0.3s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <div style={{ fontSize: '48px', marginBottom: '15px' }}>🏆</div>
+                <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '10px', fontWeight: '900' }}>CICLO DE REVISÃO</h3>
+                <p style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '12px' }}>CONSOLIDAR CONHECIMENTO ⚔️</p>
+                <button className="btn-start" style={{ marginTop: '20px', background: 'var(--accent)' }}>INICIAR AGORA</button>
               </div>
+            )}
+            {subjectsToday.length > 0 ? subjectsToday.map(s => renderSubjectCard(s, true)) : (
+              !isRevisionDay && (
+                <div style={{ gridColumn: '1/-1', padding: '30px', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px dashed rgba(255,255,255,0.1)', textAlign: 'center', color: 'var(--text-dim)' }}>
+                  Nenhuma matéria escalada para hoje.
+                </div>
+              )
             )}
           </div>
 
-          {/* SEÇÃO: ACERVO GERAL */}
+          {/* ACERVO GERAL */}
           <h2 style={{ fontSize: '18px', color: '#fff', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '24px' }}>📚</span> ACERVO DE DISCIPLINAS
           </h2>
@@ -487,19 +570,111 @@ export default function Dashboard({
             {otherSubjects.map(s => renderSubjectCard(s, false))}
           </div>
 
-          {/* GESTÃO EXTERNA: APENAS NOVAS MATÉRIAS */}
-          <div className="card" style={{ padding: '40px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)' }}>
-            <h3 style={{ color: '#fff', fontSize: '24px', marginBottom: '20px', fontWeight: '900' }}>🛠️ Gestão de Disciplinas</h3>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <input 
-                className="modern-input" 
-                placeholder="Nome da Nova Disciplina (ex: Direito Penal)" 
-                value={newSubjectName} 
-                onChange={e => setNewSubjectName(e.target.value)} 
-                style={{ flex: 1 }}
-              />
-              <button className="btn-secondary" style={{ padding: '0 40px' }} onClick={handleAddSubject}>ADICIONAR MATÉRIA</button>
+          {/* CONFIGURAÇÃO DE CICLO POMODORO */}
+          <div className="card" style={{ padding: '40px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', marginBottom: '30px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ color: '#fff', fontSize: '24px', fontWeight: '900', margin: 0 }}>⏲️ Ciclo de Foco (Pomodoro)</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '12px', color: userProfile.enablePomodoro ? 'var(--success)' : 'var(--text-dim)' }}>
+                  {userProfile.enablePomodoro ? 'ATIVADO' : 'DESATIVADO'}
+                </span>
+                <button 
+                  className="btn-secondary" 
+                  style={{ padding: '8px 15px', fontSize: '11px', borderColor: userProfile.enablePomodoro ? 'var(--success)' : 'rgba(255,255,255,0.1)' }}
+                  onClick={() => setUserProfile(prev => ({ ...prev, enablePomodoro: !prev.enablePomodoro }))}
+                >
+                  {userProfile.enablePomodoro ? 'DESATIVAR' : 'ATIVAR'}
+                </button>
+              </div>
             </div>
+            <p style={{ color: 'var(--text-dim)', marginBottom:  '25px', fontSize: '14px' }}>Defina quanto tempo deseja focar e quanto tempo descansar entre as sessões. Se desativado, o estudo será contínuo.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', opacity: userProfile.enablePomodoro ? 1 : 0.5, pointerEvents: userProfile.enablePomodoro ? 'auto' : 'none' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-dim)', marginBottom: '8px', fontWeight: 'bold' }}>MINUTOS DE ESTUDO</label>
+                <input 
+                  type="number" 
+                  className="modern-input" 
+                  value={userProfile.studyMinutesGoal || 90} 
+                  onChange={e => setUserProfile(prev => ({ ...prev, studyMinutesGoal: Number(e.target.value) }))} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-dim)', marginBottom: '8px', fontWeight: 'bold' }}>MINUTOS DE DESCANSO</label>
+                <input 
+                  type="number" 
+                  className="modern-input" 
+                  value={userProfile.restMinutesGoal || 30} 
+                  onChange={e => setUserProfile(prev => ({ ...prev, restMinutesGoal: Number(e.target.value) }))} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* GESTÃO EXTERNA: APENAS NOVAS MATÉRIAS */}
+          <div className="card" style={{ padding: '40px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', marginBottom: '40px' }}>
+            <h3 style={{ color: '#fff', fontSize: '24px', marginBottom: '10px', fontWeight: '900' }}>🛠️ Gestão de Disciplinas</h3>
+            <p style={{ color: 'var(--text-dim)', marginBottom: '25px', fontSize: '14px' }}>Migrando de outra plataforma? Você pode inserir sua carga horária acumulada ao criar a matéria (apenas uma vez).</p>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 2 }}>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px' }}>NOME DA DISCIPLINA</label>
+                <input 
+                  className="modern-input" 
+                  placeholder="Ex: Direito Penal" 
+                  value={newSubjectName} 
+                  onChange={e => setNewSubjectName(e.target.value)} 
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px' }}>MINUTOS PRÉVIOS (OPCIONAL)</label>
+                <input 
+                  type="number"
+                  className="modern-input" 
+                  placeholder="Minutos" 
+                  value={prevMinutes} 
+                  onChange={e => setPrevMinutes(e.target.value)} 
+                />
+              </div>
+              <button className="btn-secondary" style={{ height: '54px', padding: '0 30px' }} onClick={handleAddSubject}>ADICIONAR</button>
+            </div>
+          </div>
+
+          {/* RANKING GERAL */}
+          <h2 style={{ fontSize: '18px', color: '#fff', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '24px' }}>🏆</span> RANKING DOS GUERREIROS
+          </h2>
+          <div className="card" style={{ padding: '0', overflow: 'hidden', marginBottom: '60px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>POS</th>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>GUERREIRO</th>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>HORAS TOTAIS</th>
+                  <th style={{ padding: '20px', color: 'var(--text-dim)', fontSize: '12px' }}>PRECISÃO GLOBAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((p, i) => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', background: p.id === 'me' ? 'rgba(138, 43, 226, 0.05)' : 'transparent' }}>
+                    <td style={{ padding: '20px', fontWeight: '900', color: i === 0 ? '#ffca28' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : 'var(--text-dim)' }}>
+                      #{i + 1}
+                    </td>
+                    <td style={{ padding: '20px' }}>
+                      <div style={{ fontWeight: 'bold', color: '#fff' }}>{p.name} {p.id === 'me' && ' (Você)'}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--primary-light)' }}>@{p.username}</div>
+                    </td>
+                    <td style={{ padding: '20px', fontWeight: 'bold', color: 'var(--success)' }}>{p.totalHours.toFixed(1)}h</td>
+                    <td style={{ padding: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', maxWidth: '100px' }}>
+                          <div style={{ width: `${p.accuracy}%`, height: '100%', background: 'var(--primary-light)', borderRadius: '3px' }} />
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{p.accuracy.toFixed(1)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       ) : (
@@ -520,7 +695,7 @@ export default function Dashboard({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '60px' }}>
-            {viewingSubject.topics.length > 0 ? viewingSubject.topics.map((topic, index) => (
+            {viewingSubject.topics.length > 0 ? viewingSubject.topics.map((topic) => (
               <div 
                 key={topic.id} 
                 className="card" 

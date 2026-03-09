@@ -149,11 +149,12 @@ function StudyHeatmap({ studySessions }: { studySessions: StudySession[] }) {
 }
 
 // ─── Dashboard principal ────────────────────────────────────────────────────
-export default function StatsDashboard({ userProfile, subjects, studySessions, setStudySessions }: {
+export default function StatsDashboard({ userProfile, subjects, studySessions, setStudySessions, peersData = {} }: {
   userProfile: UserProfile;
   subjects: Subject[];
   studySessions: StudySession[];
   setStudySessions: React.Dispatch<React.SetStateAction<StudySession[]>>;
+  peersData?: Record<string, any>;
 }) {
   const isCaveira = document.body.classList.contains('theme-caveira');
 
@@ -202,11 +203,28 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
     return '32px';
   }, [totalHoursAll]);
 
-  const radarData = useMemo(() => (subjects || []).map(s => {
-    const done = (s.topics || []).reduce((acc, t) => acc + (t.questionsDone || 0), 0) || 0;
-    const correct = (s.topics || []).reduce((acc, t) => acc + (t.questionsCorrect || 0), 0) || 0;
-    return { subject: s.name, A: done > 0 ? Math.round((correct / done) * 100) : 5 };
-  }), [subjects]);
+  const radarData = useMemo(() => {
+    const allSubjects = new Set((subjects || []).map(s => s.name));
+    Object.values(peersData).forEach(p => {
+      (p.subjectsMetrics || []).forEach((s: any) => allSubjects.add(s.name));
+    });
+
+    return Array.from(allSubjects).map(sName => {
+      const mySubject = (subjects || []).find(s => s.name === sName);
+      const res: any = { subject: sName };
+      
+      const myDone = (mySubject?.topics || []).reduce((acc, t) => acc + (t.questionsDone || 0), 0) || 0;
+      const myHits = (mySubject?.topics || []).reduce((acc, t) => acc + (t.questionsCorrect || 0), 0) || 0;
+      res['Você'] = myDone > 0 ? Math.round((myHits / myDone) * 100) : 0;
+
+      Object.values(peersData).forEach(p => {
+        const peerSubject = (p.subjectsMetrics || []).find((s: any) => s.name === sName);
+        res[p.name || p.username] = peerSubject ? Math.round(peerSubject.accuracy) : 0;
+      });
+
+      return res;
+    });
+  }, [subjects, peersData]);
 
   const barData = useMemo(() => (subjects || []).map(s => {
     const done = (s.topics || []).reduce((acc, t) => acc + (t.questionsDone || 0), 0) || 0;
@@ -277,7 +295,6 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
   }, [studySessions, subjects]);
 
   const [pdfStats, setPdfStats] = useState<{ subject: string, time: number, totalPages: number, avgTimePerPage: number }[]>([]);
-  const [globalAvgTime, setGlobalAvgTime] = useState(0);
 
   useEffect(() => {
     const loadPdfStats = async () => {
@@ -329,7 +346,6 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
         }));
 
         setPdfStats(finalStats.sort((a,b) => b.time - a.time).slice(0, 5));
-        setGlobalAvgTime(totalGlobalPages > 0 ? totalGlobalTime / totalGlobalPages : 0);
       } catch (e) { console.error('Error loading PDF stats', e); }
     };
     loadPdfStats();
@@ -410,7 +426,18 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
               <PolarGrid stroke="rgba(255,255,255,0.05)" />
               <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-dim)', fontSize: 12 }} />
-              <Radar name="Precisão" dataKey="A" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.5} />
+              <Radar name="Você" dataKey="Você" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.5} />
+              {Object.values(peersData).map((p: any, i) => (
+                <Radar 
+                  key={p.id} 
+                  name={p.name || p.username} 
+                  dataKey={p.name || p.username} 
+                  stroke={[`#ff00ff`, `#00f2ff`, `#ffd700`, `#ff4d4d`][i % 4]} 
+                  fill={[`#ff00ff`, `#00f2ff`, `#ffd700`, `#ff4d4d`][i % 4]} 
+                  fillOpacity={0.3} 
+                />
+              ))}
+              <Legend />
             </RadarChart>
           </ResponsiveContainer>
         </div>

@@ -14,6 +14,10 @@ import ProfileView from './components/ProfileView';
 import CalendarView from './components/CalendarView';
 import SimuladoView from './components/SimuladoView';
 import RedacaoView from './components/RedacaoView';
+import TafView, { type TafExercise } from './components/TafView';
+import RevisaoView from './components/RevisaoView';
+import P2PGroupView from './components/P2PGroupView';
+import { useP2P } from './hooks/useP2P';
 
 class ErrorBoundary extends Component<{children: React.ReactNode}, {hasError: boolean}> {
   constructor(props: any) {
@@ -90,9 +94,13 @@ export interface Simulado {
 
 export interface UserProfile {
   name: string;
+  username?: string;
   targetJob: string;
   weeklyHours: number;
   badgeUrl2?: string;
+  studyMinutesGoal?: number;
+  restMinutesGoal?: number;
+  enablePomodoro?: boolean;
 }
 
 export interface StudySession {
@@ -109,9 +117,9 @@ export interface CycleConfig {
 }
 
 function AppContent() {
-  const [currentView, setCurrentView] = useState<'stats' | 'dashboard' | 'task' | 'summary' | 'materials' | 'profile' | 'calendar' | 'simulado' | 'redacao'>(() => {
+  const [currentView, setCurrentView] = useState<'stats' | 'dashboard' | 'task' | 'summary' | 'materials' | 'profile' | 'calendar' | 'simulado' | 'redacao' | 'taf' | 'revisao' | 'p2p'>(() => {
     const saved = localStorage.getItem('pobruja-current-view');
-    const validViews = ['stats', 'dashboard', 'task', 'summary', 'materials', 'profile', 'calendar', 'simulado', 'redacao'];
+    const validViews = ['stats', 'dashboard', 'task', 'summary', 'materials', 'profile', 'calendar', 'simulado', 'redacao', 'taf', 'revisao', 'p2p'];
     return (saved && validViews.includes(saved)) ? (saved as any) : 'stats';
   });
 
@@ -132,9 +140,17 @@ function AppContent() {
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     try {
       const saved = localStorage.getItem('pobruja-profile');
-      if (saved && saved !== 'undefined' && saved !== 'null') return JSON.parse(saved);
+      if (saved && saved !== 'undefined' && saved !== 'null') {
+        const parsed = JSON.parse(saved);
+        return { 
+          studyMinutesGoal: 90, 
+          restMinutesGoal: 30, 
+          enablePomodoro: true,
+          ...parsed 
+        };
+      }
     } catch (e) { console.error(e); }
-    return { name: '', targetJob: '', weeklyHours: 0 };
+    return { name: '', username: '', targetJob: '', weeklyHours: 0, studyMinutesGoal: 90, restMinutesGoal: 30, enablePomodoro: true };
   });
   
   const [subjects, setSubjects] = useState<Subject[]>(() => {
@@ -177,6 +193,14 @@ function AppContent() {
     return [];
   });
 
+  const [tafExercises, setTafExercises] = useState<TafExercise[]>(() => {
+    try {
+      const saved = localStorage.getItem('pobruja-taf');
+      if (saved && saved !== 'undefined' && saved !== 'null') return JSON.parse(saved);
+    } catch (e) { console.error(e); }
+    return [];
+  });
+
   const [studySessions, setStudySessions] = useState<StudySession[]>(() => {
     try {
       const saved = localStorage.getItem('pobruja-sessions');
@@ -200,10 +224,44 @@ function AppContent() {
     return defaultVal;
   });
 
-  const [onboardData, setOnboardData] = useState({ name: '', targetJob: '', weeklyHours: 20 });
+  const [onboardData, setOnboardData] = useState({ name: '', username: '', targetJob: '', weeklyHours: 20 });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [globalActivity, setGlobalActivity] = useState<string | null>(null);
+
+  const globalAccuracy = useMemo(() => {
+    const done = subjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsDone || 0), 0) || 0), 0);
+    const hits = subjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsCorrect || 0), 0) || 0), 0);
+    return done > 0 ? (hits / done) * 100 : 0;
+  }, [subjects]);
+
+  const totalHoursAll = useMemo(() => {
+    const subjectsTime = (subjects || []).reduce((acc, s) => acc + (s.topics || []).reduce((tAcc, t) => tAcc + (t.minutesSpent || 0), 0), 0);
+    const essaysTime = (essays || []).reduce((acc, e) => acc + (e.timeMinutes || 0), 0);
+    const simuladosTime = (simulados || []).reduce((acc, s) => acc + (s.timeMinutes || 0), 0);
+    return (subjectsTime + essaysTime + simuladosTime) / 60;
+  }, [subjects, essays, simulados]);
+
+  const { peerId, peersData, connectToPeer, disconnectPeer } = useP2P(
+    userProfile, 
+    currentView, 
+    selectedTask, 
+    totalHoursAll, 
+    globalAccuracy, 
+    globalActivity,
+    subjects,
+    essays,
+    simulados,
+    tafExercises
+  );
+
+  const isRevisionDay = useMemo(() => {
+    const day = cycleConfig.currentDay || 1;
+    const schedule = cycleConfig.schedule[day.toString()] || [];
+    return schedule.includes('🏆 REVISÃO');
+  }, [cycleConfig]);
 
   useEffect(() => {
+
     const theme = localStorage.getItem('pobruja-theme-id');
     const isCustom = localStorage.getItem('pobruja-is-custom') === 'true';
     
@@ -245,12 +303,13 @@ function AppContent() {
       localStorage.setItem('pobruja-subjects', JSON.stringify(subjects || []));
       localStorage.setItem('pobruja-essays', JSON.stringify(essays || []));
       localStorage.setItem('pobruja-simulados', JSON.stringify(simulados || []));
+      localStorage.setItem('pobruja-taf', JSON.stringify(tafExercises || []));
       localStorage.setItem('pobruja-sessions', JSON.stringify(studySessions || []));
       localStorage.setItem('pobruja-cycle-config', JSON.stringify(cycleConfig));
       localStorage.setItem('pobruja-current-view', currentView);
       localStorage.setItem('pobruja-selected-task', JSON.stringify(selectedTask));
     } catch (e) { console.error('Storage error', e); }
-  }, [userProfile, subjects, essays, simulados, studySessions, cycleConfig, currentView, selectedTask]);
+  }, [userProfile, subjects, essays, simulados, tafExercises, studySessions, cycleConfig, currentView, selectedTask]);
 
   const addStudyTime = (minutes: number, subjectId: string, topicId: string) => {
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -320,12 +379,7 @@ function AppContent() {
     setCurrentView('task');
   };
 
-  const totalHoursAll = useMemo(() => {
-    const subjectsTime = (subjects || []).reduce((acc, s) => acc + (s.topics || []).reduce((tAcc, t) => tAcc + (t.minutesSpent || 0), 0), 0);
-    const essaysTime = (essays || []).reduce((acc, e) => acc + (e.timeMinutes || 0), 0);
-    const simuladosTime = (simulados || []).reduce((acc, s) => acc + (s.timeMinutes || 0), 0);
-    return (subjectsTime + essaysTime + simuladosTime) / 60;
-  }, [subjects, essays, simulados]);
+
 
   const importBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -338,6 +392,7 @@ function AppContent() {
           if (data.subjects) setSubjects(data.subjects);
           if (data.essays) setEssays(data.essays);
           if (data.simulados) setSimulados(data.simulados);
+          if (data.tafExercises) setTafExercises(data.tafExercises);
           if (data.studySessions) setStudySessions(data.studySessions);
           if (data.cycleConfig) setCycleConfig(data.cycleConfig);
           if (data.summaries) localStorage.setItem('pobruja-summaries', JSON.stringify(data.summaries));
@@ -363,13 +418,14 @@ function AppContent() {
             <p style={{color: 'var(--text-dim)', marginBottom: '40px'}}>Cadastre seu perfil de estudo.</p>
             
             <input type="text" className="modern-input" placeholder="Seu Nome" onChange={e => setOnboardData({...onboardData, name: e.target.value})} style={{marginBottom: '15px'}} />
+            <input type="text" className="modern-input" placeholder="Username (@apelido)" onChange={e => setOnboardData({...onboardData, username: e.target.value})} style={{marginBottom: '15px'}} />
             <input type="text" className="modern-input" placeholder="Cargo Alvo" onChange={e => setOnboardData({...onboardData, targetJob: e.target.value})} style={{marginBottom: '15px'}} />
             <input type="number" className="modern-input" placeholder="Horas por Semana" onChange={e => setOnboardData({...onboardData, weeklyHours: Number(e.target.value)})} style={{marginBottom: '30px'}} />
 
             <div style={{display: 'flex', gap: '10px'}}>
               <button className="btn-start" style={{flex: 1}} onClick={() => {
-                if (onboardData.name && onboardData.weeklyHours > 0) setUserProfile(onboardData);
-                else toast.error('Dados inválidos');
+                if (onboardData.name && onboardData.username && onboardData.weeklyHours > 0) setUserProfile(onboardData);
+                else toast.error('Preencha os campos obrigatórios (Nome, Username e Horas)');
               }}>COMEÇAR</button>
               <label className="btn-secondary" style={{cursor: 'pointer'}}>
                 IMPORTAR
@@ -392,23 +448,27 @@ function AppContent() {
         {userProfile.name && (
           <div style={{marginBottom: '20px', background: 'rgba(255,255,255,0.03)', padding: '15px', borderRadius: '15px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.05)'}}>
             <h4 style={{color: '#fff', fontSize: '16px', margin: 0}}>{userProfile.name}</h4>
+            <p style={{color: 'var(--primary-light)', fontSize: '12px', margin: '2px 0 0 0', fontWeight: 'bold'}}>@{userProfile.username || userProfile.name.toLowerCase().replace(/\s/g, '')}</p>
             <p style={{color: '#fff', fontSize: '11px', margin: '4px 0 0 0', opacity: 0.9}}>🎯 {userProfile.targetJob}</p>
           </div>
         )}
 
         <button onClick={() => { setCurrentView('stats'); setIsSidebarOpen(false); }} className={currentView === 'stats' ? 'active' : ''}>📊 Desempenho</button>
         <button onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} className={currentView === 'dashboard' ? 'active' : ''}>🛡️ Painel de Estudos</button>
+        <button onClick={() => { setCurrentView('revisao'); setIsSidebarOpen(false); }} className={currentView === 'revisao' ? 'active' : ''} style={isRevisionDay ? { border: '2px solid var(--accent)', boxShadow: '0 0 10px var(--accent)' } : {}}>🏆 Ciclo de Revisão</button>
         <button onClick={() => { setCurrentView('calendar'); setIsSidebarOpen(false); }} className={currentView === 'calendar' ? 'active' : ''}>📅 Calendário / Ciclo</button>
         <button onClick={() => { setCurrentView('simulado'); setIsSidebarOpen(false); }} className={currentView === 'simulado' ? 'active' : ''}>📝 Simulados</button>
         <button onClick={() => { setCurrentView('redacao'); setIsSidebarOpen(false); }} className={currentView === 'redacao' ? 'active' : ''}>🖋️ Redação</button>
+        <button onClick={() => { setCurrentView('taf'); setIsSidebarOpen(false); }} className={currentView === 'taf' ? 'active' : ''}>🏃 Treinamento TAF</button>
         <button onClick={() => { setCurrentView('materials'); setIsSidebarOpen(false); }} className={currentView === 'materials' ? 'active' : ''}>📖 Biblioteca</button>
         <button onClick={() => { setCurrentView('summary'); setIsSidebarOpen(false); }} className={currentView === 'summary' ? 'active' : ''}>📜 Anotações</button>
+        <button onClick={() => { setCurrentView('p2p'); setIsSidebarOpen(false); }} className={currentView === 'p2p' ? 'active' : ''}>🌐 Sala P2P</button>
         <button onClick={() => { setCurrentView('profile'); setIsSidebarOpen(false); }} className={currentView === 'profile' ? 'active' : ''}>👤 Perfil & Temas</button>
         
         <div style={{marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
           <button className="btn-secondary" style={{fontSize: '11px', textAlign: 'center', padding: '10px'}} onClick={() => {
             try {
-              const data = { subjects, essays, simulados, studySessions, userProfile, cycleConfig, summaries: JSON.parse(localStorage.getItem('pobruja-summaries') || '{}') };
+              const data = { subjects, essays, simulados, tafExercises, studySessions, userProfile, cycleConfig, summaries: JSON.parse(localStorage.getItem('pobruja-summaries') || '{}') };
               saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `veritas_backup.json`);
             } catch (e) { toast.error('Erro no backup'); }
           }}>💾 Backup</button>
@@ -418,26 +478,31 @@ function AppContent() {
 
       <main className="content">
         <Suspense fallback={<div style={{color: '#fff', textAlign: 'center', padding: '100px', fontSize: '24px', fontWeight: 'bold'}}>⚡ INICIANDO SISTEMA...</div>}>
-          {currentView === 'stats' && <StatsDashboard userProfile={userProfile} subjects={subjects} studySessions={studySessions} setStudySessions={setStudySessions} onStartTask={handleStartTask} />}
+          {currentView === 'stats' && <StatsDashboard userProfile={userProfile} subjects={subjects} studySessions={studySessions} setStudySessions={setStudySessions} peersData={peersData} />}
           {currentView === 'calendar' && <CalendarView subjects={subjects} cycleConfig={cycleConfig} setCycleConfig={setCycleConfig} />}
-          {currentView === 'dashboard' && <Dashboard subjects={subjects} onStartTask={handleStartTask} setSubjects={setSubjects} cycleConfig={cycleConfig} setCycleConfig={setCycleConfig} />}
+          {currentView === 'dashboard' && <Dashboard subjects={subjects} onStartTask={handleStartTask} setSubjects={setSubjects} cycleConfig={cycleConfig} setCycleConfig={setCycleConfig} userProfile={userProfile} setUserProfile={setUserProfile} onViewChange={setCurrentView} peersData={peersData} />}
           {currentView === 'task' && selectedTask && (
             <TaskExecution 
               task={selectedTask} 
               onComplete={handleFinishTask} 
               onSaveProgress={handleSaveProgressOnly} 
+              userProfile={userProfile}
               onRenameSubject={(newName) => {
                 setSubjects(prev => prev.map(s => s.id === selectedTask.subjectId ? { ...s, name: newName } : s));
                 setSelectedTask(prev => prev ? { ...prev, subjectName: newName } : null);
               }}
+              setGlobalActivity={setGlobalActivity}
             />
           )}
           {currentView === 'materials' && <MaterialsView subjects={subjects} setSubjects={setSubjects} handleRemoveSubject={(id) => setSubjects(s => s.filter(x => x.id !== id))} handleRemoveTopic={(sid, tid) => setSubjects(s => s.map(x => x.id === sid ? {...x, topics: x.topics.filter(t => t.id !== tid)} : x))} />}
           {currentView === 'summary' && <SummaryViewer />}
+          {currentView === 'revisao' && <RevisaoView subjects={subjects} onAddStudyTime={addGlobalStudyTime} userProfile={userProfile} setGlobalActivity={setGlobalActivity} />}
           {currentView === 'profile' && <ProfileView userProfile={userProfile} setUserProfile={setUserProfile} subjects={subjects} totalHours={totalHoursAll} onThemeChange={() => setCurrentView('stats')} />}
-          {currentView === 'simulado' && <SimuladoView simulados={simulados} setSimulados={setSimulados} onAddStudyTime={addGlobalStudyTime} />}
-          {currentView === 'redacao' && <RedacaoView essays={essays} setEssays={setEssays} onAddStudyTime={addGlobalStudyTime} />}
-          {!['stats', 'calendar', 'dashboard', 'task', 'materials', 'summary', 'profile', 'simulado', 'redacao'].includes(currentView) && (
+          {currentView === 'simulado' && <SimuladoView simulados={simulados} setSimulados={setSimulados} onAddStudyTime={addGlobalStudyTime} peersData={peersData} />}
+          {currentView === 'redacao' && <RedacaoView essays={essays} setEssays={setEssays} onAddStudyTime={addGlobalStudyTime} peersData={peersData} />}
+          {currentView === 'taf' && <TafView tafExercises={tafExercises} setTafExercises={setTafExercises} peersData={peersData} />}
+          {currentView === 'p2p' && <P2PGroupView peerId={peerId} peersData={peersData} connectToPeer={connectToPeer} disconnectPeer={disconnectPeer} />}
+          {!['stats', 'calendar', 'dashboard', 'task', 'materials', 'summary', 'profile', 'simulado', 'redacao', 'taf', 'revisao', 'p2p'].includes(currentView) && (
             <div style={{color: '#fff'}}>Erro de Navegação. <button onClick={() => setCurrentView('stats')}>Voltar ao Início</button></div>
           )}
         </Suspense>
@@ -455,3 +520,4 @@ function App() {
 }
 
 export default App;
+

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import type { Simulado } from '../App';
 
@@ -8,9 +8,10 @@ interface SimuladoViewProps {
   simulados: Simulado[];
   setSimulados: React.Dispatch<React.SetStateAction<Simulado[]>>;
   onAddStudyTime: (min: number) => void;
+  peersData?: Record<string, any>;
 }
 
-export default function SimuladoView({ simulados, setSimulados, onAddStudyTime }: SimuladoViewProps) {
+export default function SimuladoView({ simulados, setSimulados, onAddStudyTime, peersData = {} }: SimuladoViewProps) {
   const [description, setDescription] = useState('');
   const [totalQuestions, setTotalQuestions] = useState('');
   const [hits, setHits] = useState('');
@@ -41,12 +42,33 @@ export default function SimuladoView({ simulados, setSimulados, onAddStudyTime }
   };
 
   const performanceData = useMemo(() => {
-    return [...simulados].reverse().map(s => ({
-      date: format(new Date(s.date), 'dd/MM'),
-      accuracy: Math.round((s.hits / s.totalQuestions) * 100),
-      description: s.description
-    }));
-  }, [simulados]);
+    const allDates = new Set<string>();
+    simulados.forEach(s => allDates.add(s.date.slice(0, 10)));
+    Object.values(peersData).forEach(p => {
+      (p.simuladosHistory || []).forEach((s: any) => allDates.add(s.date.slice(0, 10)));
+    });
+
+    const sortedDates = Array.from(allDates).sort();
+
+    return sortedDates.map(fullDate => {
+      const displayDate = format(new Date(fullDate + 'T12:00:00'), 'dd/MM');
+      const res: any = { date: displayDate };
+      
+      const mySimsOnDate = simulados.filter(s => s.date.startsWith(fullDate));
+      if (mySimsOnDate.length > 0) {
+        res['Você'] = Math.round(mySimsOnDate.reduce((a, b) => a + (b.hits/b.totalQuestions)*100, 0) / mySimsOnDate.length);
+      }
+
+      Object.values(peersData).forEach(p => {
+        const peerSimsOnDate = (p.simuladosHistory || []).filter((s: any) => s.date.startsWith(fullDate));
+        if (peerSimsOnDate.length > 0) {
+          res[p.name || p.username] = Math.round(peerSimsOnDate.reduce((a: number, b: any) => a + b.accuracy, 0) / peerSimsOnDate.length);
+        }
+      });
+
+      return res;
+    });
+  }, [simulados, peersData]);
 
   const handleDelete = (id: string) => {
     if (window.confirm('Excluir este registro de simulado?')) {
@@ -107,7 +129,20 @@ export default function SimuladoView({ simulados, setSimulados, onAddStudyTime }
                   <RechartsTooltip 
                     contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--primary)', borderRadius: '12px' }}
                   />
-                  <Line type="monotone" dataKey="accuracy" stroke="var(--success)" strokeWidth={3} dot={{ fill: 'var(--success)', r: 6 }} />
+                  <Legend />
+                  <Line name="Você" type="monotone" dataKey="Você" stroke="var(--success)" strokeWidth={3} dot={{ fill: 'var(--success)', r: 6 }} connectNulls />
+                  {Object.values(peersData).map((p: any, i) => (
+                    <Line 
+                      key={p.id} 
+                      name={p.name || p.username} 
+                      type="monotone" 
+                      dataKey={p.name || p.username} 
+                      stroke={[`#ff00ff`, `#00f2ff`, `#ffd700`, `#ff4d4d`][i % 4]} 
+                      strokeWidth={2} 
+                      dot={{ r: 4 }} 
+                      connectNulls
+                    />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             ) : (

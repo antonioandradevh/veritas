@@ -98,6 +98,15 @@ export default function ProfileView({ userProfile, setUserProfile, subjects, tot
               onBlur={e => e.target.value && setUserProfile({...userProfile, name: e.target.value})}
             />
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+            <p style={{ fontSize: '16px', color: 'var(--primary-light)', fontWeight: 'bold', margin: 0 }}>@{userProfile.username || userProfile.name.toLowerCase().replace(/\s/g, '')}</p>
+            <input 
+              className="modern-input" 
+              style={{ padding: '8px 15px', fontSize: '14px', maxWidth: '200px', height: '40px' }} 
+              placeholder="Mudar @username"
+              onBlur={e => e.target.value && setUserProfile({...userProfile, username: e.target.value})}
+            />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <p style={{ fontSize: '20px', color: '#fff', fontWeight: 'bold', margin: 0 }}>🎯 {userProfile.targetJob}</p>
             <input 

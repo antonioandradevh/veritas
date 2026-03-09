@@ -28,17 +28,32 @@ export default function CalendarView({ subjects, cycleConfig, setCycleConfig }: 
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const getSubjectsForDate = (date: Date) => {
-    if (!cycleConfig || !cycleConfig.startDate || !cycleConfig.numDays) return [];
+    if (!cycleConfig || !cycleConfig.numDays) return [];
+    
+    const currentCycleDay = cycleConfig.currentDay || 1;
+    const today = startOfDay(new Date());
+    const targetDate = startOfDay(date);
+    
     try {
-      const diff = differenceInDays(startOfDay(date), startOfDay(parseISO(cycleConfig.startDate)));
-      if (diff < 0) return []; // Antes da data de início
+      // Diferença de dias entre a data do calendário e hoje
+      const diff = differenceInDays(targetDate, today);
       
-      const cycleDay = (diff % cycleConfig.numDays) + 1;
+      // O dia do ciclo para aquela data é o (Dia Atual + Diferença)
+      // Usamos a lógica de módulo para garantir que fique dentro do intervalo 1 a numDays
+      let cycleDay = ((currentCycleDay - 1 + diff) % cycleConfig.numDays);
+      if (cycleDay < 0) cycleDay += cycleConfig.numDays;
+      cycleDay += 1;
+
       const scheduled = (cycleConfig.schedule && cycleConfig.schedule[cycleDay.toString()]) || [];
       
       // Auto-projection of SIMULADO based on interval
       const simInterval = cycleConfig.simInterval || 15;
-      const isAutoSim = diff > 0 && diff % simInterval === 0;
+      
+      // Para o simulado automático, também usamos a lógica relativa ao dia atual
+      // Se hoje faltam X dias para o simulado, amanhã faltarão X-1, independente da data real
+      const totalDaysSinceStart = differenceInDays(today, parseISO(cycleConfig.startDate));
+      const projectedDiff = totalDaysSinceStart + diff;
+      const isAutoSim = projectedDiff > 0 && projectedDiff % simInterval === 0;
 
       if (scheduled.includes('📝 SIMULADO') || isAutoSim) {
         return [scheduled.includes('📝 SIMULADO') ? '📝 SIMULADO' : '📝 SIMULADO (AUTO)'];

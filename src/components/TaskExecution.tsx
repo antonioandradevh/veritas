@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import type { Task } from '../App';
+import type { Task, UserProfile } from '../App';
 import PdfViewer from './PdfViewer';
 
 interface TaskExecutionProps {
@@ -8,12 +8,27 @@ interface TaskExecutionProps {
   onComplete: (minutesSpent: number, qDone?: number, qCorrect?: number, sLocation?: string, sText?: string) => void;
   onSaveProgress: (minutesSpent: number) => void;
   onRenameSubject?: (newName: string) => void;
+  userProfile: UserProfile;
+  setGlobalActivity?: (activity: string | null) => void;
 }
 
 const ALARM_SOUND = '/alarme.mp3';
 
-export default function TaskExecution({ task, onComplete, onSaveProgress, onRenameSubject }: TaskExecutionProps) {
-  const isBase = task.type.includes('1 e 2');
+// Worker code as a string to allow background execution even when tab is throttled
+const workerCode = `
+  let timer = null;
+  self.onmessage = (e) => {
+    if (e.data === 'start') {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => self.postMessage('tick'), 1000);
+    } else if (e.data === 'stop') {
+      clearInterval(timer);
+      timer = null;
+    }
+  };
+`;
+
+export default function TaskExecution({ task, onComplete, onSaveProgress, onRenameSubject, userProfile, setGlobalActivity }: TaskExecutionProps) {
   const [isEditingSubject, setIsEditingSubject] = useState(false);
   const [tempSubjectName, setTempSubjectName] = useState(task.subjectName);
   const [step, setStep] = useState(() => {
@@ -21,7 +36,7 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
     return saved ? Number(saved) : 1;
   });
   
-  const [summaryLoc, setSummaryLoc] = useState(() => task.topic?.summaryLocation || '');
+  const [summaryLoc] = useState(() => task.topic?.summaryLocation || '');
   const [summaryText, setSummaryText] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('pobruja-summaries') || '{}');
@@ -41,18 +56,16 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
   });
   const [restTimeLeft, setRestTimeLeft] = useState(() => {
     const saved = localStorage.getItem(`restTimeLeft-${task.topic.id}`);
-    return saved ? Number(saved) : 600;
+    return saved ? Number(saved) : (userProfile.restMinutesGoal || 30) * 60;
   }); 
   const [restInput, setRestInput] = useState(() => {
     const saved = localStorage.getItem(`restInput-${task.topic.id}`);
-    return saved ? Number(saved) : 10;
+    return saved ? Number(saved) : (userProfile.restMinutesGoal || 30);
   }); 
 
   const [isVideoMode, setIsVideoMode] = useState(() => {
     return localStorage.getItem(`isVideoMode-${task.topic.id}`) === 'true';
   });
-
-  const lastTickRef = useRef<number>(0);
 
   const [selectedMaterialUrl, setSelectedMaterialUrl] = useState(() => {
     const forced = localStorage.getItem(`initialMaterial-${task.topic.id}`);
@@ -76,6 +89,24 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
     return (localStorage.getItem(`dominioTab-${task.topic.id}`) as any) || 'performance';
   });
 
+  const alarmAudio = useMemo(() => new Audio(ALARM_SOUND), []);
+
+  useEffect(() => {
+    if (setGlobalActivity) {
+      if (isResting) {
+        setGlobalActivity('Em Pausa ☕');
+      } else {
+        setGlobalActivity(`Estudando: ${task.subjectName}`);
+      }
+    }
+  }, [isResting, task.subjectName, setGlobalActivity]);
+
+  useEffect(() => {
+    return () => {
+      if (setGlobalActivity) setGlobalActivity(null);
+    };
+  }, [setGlobalActivity]);
+
   useEffect(() => {
     localStorage.setItem(`step-${task.topic.id}`, step.toString());
     localStorage.setItem(`isResting-${task.topic.id}`, isResting.toString());
@@ -86,43 +117,49 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
   }, [step, isResting, restTimeLeft, restInput, isVideoMode, dominioTab, task.topic.id]);
 
   const playAlarm = () => {
-    const audio = new Audio(ALARM_SOUND);
-    audio.play().catch(() => console.log('Erro ao tocar alarme'));
+    alarmAudio.currentTime = 0;
+    alarmAudio.play().catch(() => console.log('Erro ao tocar alarme. Interação necessária.'));
   };
 
   useEffect(() => {
-    lastTickRef.current = Date.now();
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      const deltaMs = now - lastTickRef.current;
-      const deltaSec = Math.floor(deltaMs / 1000);
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob));
 
-      if (deltaSec >= 1) {
-        lastTickRef.current = now; 
-
-        if (isResting) {
-          setRestTimeLeft(t => {
-            const next = t - deltaSec;
-            if (next <= 0) {
-              setIsResting(false);
-              playAlarm();
-              toast.success('Descanso concluído! De volta aos estudos.');
-              return 0;
-            }
-            return next;
-          });
-        } else {
-          setTimeSpent(t => {
-            const next = t + deltaSec;
-            localStorage.setItem(`timer-${task.topic.id}`, next.toString());
-            return next;
-          });
-        }
+    worker.onmessage = () => {
+      if (isResting) {
+        setRestTimeLeft(t => {
+          if (t <= 1) {
+            setIsResting(false);
+            playAlarm();
+            toast.success('Descanso concluído! De volta aos estudos.', { duration: 10000 });
+            return 0;
+          }
+          return t - 1;
+        });
+      } else {
+        setTimeSpent(t => {
+          const next = t + 1;
+          localStorage.setItem(`timer-${task.topic.id}`, next.toString());
+          
+          // Alerta automático de ciclo de estudo
+          const studyGoalSeconds = (userProfile.studyMinutesGoal || 90) * 60;
+          if (next > 0 && next % studyGoalSeconds === 0) {
+            playAlarm();
+            toast('Ciclo de estudo atingido! Hora de uma pausa?', { icon: '⏲️', duration: 10000 });
+          }
+          
+          return next;
+        });
       }
-    }, 1000);
+    };
 
-    return () => clearInterval(timer);
-  }, [isResting, task.topic.id]);
+    worker.postMessage('start');
+
+    return () => {
+      worker.postMessage('stop');
+      worker.terminate();
+    };
+  }, [isResting, task.topic.id, userProfile.studyMinutesGoal]);
 
   const clearPersistentState = () => {
     ['timer', 'step', 'isResting', 'restTimeLeft', 'restInput', 'isVideoMode', 'dominioTab'].forEach(k => {
@@ -138,9 +175,12 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
   };
 
   const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${m}:${('0' + s).slice(-2)}`;
+    return h > 0 
+      ? `${h}:${('0' + m).slice(-2)}:${('0' + s).slice(-2)}`
+      : `${m}:${('0' + s).slice(-2)}`;
   };
 
   if (isResting) {
@@ -148,10 +188,15 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
       <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#08080c' }}>
         <h1 style={{fontSize: '48px', color: 'var(--success)', marginBottom: '20px'}}>☕ Descanso</h1>
         <div style={{fontSize: '120px', fontWeight: '900', color: '#fff'}}>{formatTime(restTimeLeft)}</div>
+        <div style={{marginTop: '20px', color: 'var(--text-dim)'}}>Meta de hoje: {userProfile.restMinutesGoal} min</div>
         <button className="btn-start" style={{marginTop: '40px', padding: '20px 50px'}} onClick={() => setIsResting(false)}>Retornar aos Estudos</button>
       </div>
     );
   }
+
+  // Barra de progresso do ciclo de estudo
+  const studyGoalSeconds = (userProfile.studyMinutesGoal || 90) * 60;
+  const cycleProgress = (timeSpent % studyGoalSeconds) / studyGoalSeconds * 100;
 
   // Layout para Leitura (Passo 1 e 2)
   if ((step === 1 || step === 2) && !isVideoMode) {
@@ -163,6 +208,11 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
             materialId={task.topic.materials.find(m => m.url === selectedMaterialUrl)?.id} 
             initialPage={initialPage}
           />
+        </div>
+
+        {/* Barra de progresso do ciclo no topo do painel inferior */}
+        <div style={{ height: '4px', width: '100%', background: 'rgba(255,255,255,0.05)' }}>
+          <div style={{ height: '100%', width: `${cycleProgress}%`, background: 'var(--success)', transition: 'width 1s linear' }} />
         </div>
 
         <div style={{ padding: '12px 25px', background: '#1a1a1a', borderTop: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
@@ -292,6 +342,9 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
             )}
             <p style={{ color: '#fff', fontSize: '18px', fontWeight: 'bold' }}>{task.topic?.name}</p>
             <div style={{ marginTop: '20px', fontSize: '32px', fontWeight: '900', color: 'var(--success)' }}>{formatTime(timeSpent)}</div>
+            <div style={{ marginTop: '10px', height: '4px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${cycleProgress}%`, background: 'var(--success)', transition: 'width 1s linear' }} />
+            </div>
           </div>
 
           <div className="card">
