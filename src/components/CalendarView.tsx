@@ -255,11 +255,13 @@ export default function CalendarView({ subjects, cycleConfig, setCycleConfig }: 
       </div>
 
       {renderHeader()}
-      <div className="card" style={{ padding: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: '10px' }}>
-          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => <div key={d} style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-dim)', fontSize: '12px' }}>{d}</div>)}
+      <div className="card" style={{ padding: '20px', overflowX: 'auto' }}>
+        <div style={{ minWidth: '800px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: '10px' }}>
+            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => <div key={d} style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-dim)', fontSize: '12px' }}>{d}</div>)}
+          </div>
+          {renderCells()}
         </div>
-        {renderCells()}
       </div>
       <div className="card" style={{ marginTop: '30px', padding: '20px' }}>
         <h3 style={{ marginBottom: '10px' }}>💡 Dica do Mestre</h3>

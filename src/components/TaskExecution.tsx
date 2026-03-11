@@ -341,7 +341,19 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
               </h2>
             )}
             <p style={{ color: '#fff', fontSize: '18px', fontWeight: 'bold' }}>{task.topic?.name}</p>
-            <div style={{ marginTop: '20px', fontSize: '32px', fontWeight: '900', color: 'var(--success)' }}>{formatTime(timeSpent)}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+              <div style={{ fontSize: '32px', fontWeight: '900', color: 'var(--success)' }}>{formatTime(timeSpent)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>PAUSA (MIN):</span>
+                <input 
+                  type="number" 
+                  value={restInput} 
+                  onChange={e => setRestInput(Number(e.target.value))} 
+                  style={{ width: '40px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '4px', color: '#fff', textAlign: 'center', padding: '4px', outline: 'none' }} 
+                />
+                <button className="btn-secondary" style={{ padding: '8px 15px', fontSize: '11px' }} onClick={() => { setRestTimeLeft(restInput * 60); setIsResting(true); }}>PAUSAR ☕</button>
+              </div>
+            </div>
             <div style={{ marginTop: '10px', height: '4px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${cycleProgress}%`, background: 'var(--success)', transition: 'width 1s linear' }} />
             </div>

@@ -1,73 +1,68 @@
-# React + TypeScript + Vite
+# 🛡️ VERITAS - Sistema de Estudos P2P
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+VERITAS é uma aplicação desktop de alta performance projetada para estudantes e concurseiros que buscam máxima produtividade, consistência e uma pitada de competição saudável. O sistema permite gerenciar editais, cronometrar estudos, analisar métricas de desempenho e conectar-se com amigos em tempo real via P2P.
 
-Currently, two official plugins are available:
+## 🚀 Principais Funcionalidades
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **🛡️ Painel de Estudos:** Gerencie suas matérias e tópicos do edital. Organize seu ciclo de estudos diário.
+- **🌐 Sala de Estudos P2P:** Conecte-se diretamente com outros usuários usando uma chave única. Veja o que seus amigos estão estudando em tempo real sem a necessidade de servidores centrais.
+- **🏆 Ranking do Grupo:** Compita com seus amigos em horas totais de estudo e precisão global.
+- **📊 Dashboard de Desempenho:** Gráficos de pizza, radar de afinidade e consistência (heatmap) para visualizar sua evolução.
+- **📝 Centro de Simulados:** Registre seus resultados em simulados e acompanhe seu gráfico de precisão.
+- **🖋️ Oficina de Redação:** Cronometre sua escrita, anexe o PDF do texto e registre correções.
+- **🏃 Treinamento TAF:** Acompanhe sua evolução física para testes de aptidão com gráficos de progresso.
+- **📖 Biblioteca & Leitor de PDF:** Leia seus materiais diretamente no app com registro automático de tempo gasto por página.
+- **🎨 Customização Total:** Temas pré-definidos (incluindo o modo **Caveira 💀**) e editor de temas personalizados.
 
-## React Compiler
+## 🛠️ Tecnologias e Dependências
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+A aplicação foi construída utilizando o ecossistema moderno do JavaScript:
 
-## Expanding the ESLint configuration
+- **Frontend:** [React 19](https://react.dev/) com [TypeScript](https://www.typescriptlang.org/)
+- **Build Tool:** [Vite](https://vitejs.dev/)
+- **Comunicação P2P:** [PeerJS](https://peerjs.com/) (WebRTC)
+- **Banco de Dados Local:** [LocalForage](https://localforage.github.io/localForage/) (IndexedDB)
+- **Gráficos:** [Recharts](https://recharts.org/)
+- **Documentos:** [docx](https://docx.js.org/) para exportação de anotações.
+- **Desktop Wrapper:** [Electron](https://www.electronjs.org/) para rodar como app nativo.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 📥 Instalação e Desenvolvimento
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Certifique-se de ter o [Node.js](https://nodejs.org/) instalado.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+1.  **Instalar dependências:**
+    ```bash
+    npm install
+    ```
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+2.  **Rodar em modo Web (Navegador):**
+    ```bash
+    npm run dev
+    ```
+
+3.  **Rodar em modo Desktop (Janela nativa):**
+    Abra dois terminais:
+    - Terminal 1: `npm run dev`
+    - Terminal 2: `npm run electron:dev`
+
+## 📦 Compilação para Windows (.EXE)
+
+Para gerar o executável portátil (`.exe`) que pode ser levado em um pen-drive:
+
+```bash
+npm run electron:build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+O arquivo gerado estará na pasta `release/VERITAS.exe`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🌐 Como funciona o P2P?
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+O VERITAS não armazena seus dados de estudo em nuvem. Tudo fica no seu computador.
+Para compartilhar métricas com amigos:
+1.  Vá na aba **Sala P2P**.
+2.  Copie sua **Chave de Conexão** e envie para seu amigo.
+3.  Peça para ele colar sua chave no campo "Conectar a um Amigo" e vice-versa.
+4.  Uma vez conectados, o app enviará atualizações de status (matéria estudada, pausas, horas) automaticamente enquanto a conexão estiver ativa.
+
+---
+*Desenvolvido com foco na aprovação. Bons estudos, Guerreiro!* ⚔️🛡️

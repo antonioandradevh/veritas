@@ -25,7 +25,11 @@
       "electron-main.cjs"
     ],
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "public/icon.ico"
+    },
+    "portable": {
+      "artifactName": "VERITAS.exe"
     }
   },
   "dependencies": {
@@ -55,6 +59,7 @@
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "^40.8.0",
     "electron-builder": "^26.8.1",
+    "electron-packager": "^17.1.2",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

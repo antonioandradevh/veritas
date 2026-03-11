@@ -11,8 +11,7 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    // Icone opcional (se tiver um .ico na pasta public)
-    // icon: path.join(__dirname, 'public/favicon.ico')
+    icon: path.join(__dirname, 'public/icon.ico')
   });
 
   // Remove o menu padrão (Arquivo, Editar, etc) para parecer um app profissional
