@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
-import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, Tooltip as RechartsTooltip, LineChart, Line } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, Tooltip as RechartsTooltip, LineChart, Line, ReferenceLine } from 'recharts';
 import { startOfWeek, startOfDay, parseISO } from 'date-fns';
 import localforage from 'localforage';
 import type { Subject, UserProfile, StudySession } from '../App';
@@ -149,9 +149,11 @@ function StudyHeatmap({ studySessions }: { studySessions: StudySession[] }) {
 }
 
 // ─── Dashboard principal ────────────────────────────────────────────────────
-export default function StatsDashboard({ userProfile, subjects, studySessions, setStudySessions, peersData = {} }: {
-  userProfile: UserProfile;
+export default function StatsDashboard({ userProfile, setUserProfile, subjects, setSubjects, studySessions, setStudySessions, peersData = {} }: {
+  userProfile: UserProfile & { accuracyResets?: string[] };
+  setUserProfile: (profile: any) => void;
   subjects: Subject[];
+  setSubjects: React.Dispatch<React.SetStateAction<Subject[]>>;
   studySessions: StudySession[];
   setStudySessions: React.Dispatch<React.SetStateAction<StudySession[]>>;
   peersData?: Record<string, any>;
@@ -204,21 +206,18 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
   }, [totalHoursAll]);
 
   const radarData = useMemo(() => {
-    const allSubjects = new Set((subjects || []).map(s => s.name));
-    Object.values(peersData).forEach(p => {
-      (p.subjectsMetrics || []).forEach((s: any) => allSubjects.add(s.name));
-    });
-
-    return Array.from(allSubjects).map(sName => {
-      const mySubject = (subjects || []).find(s => s.name === sName);
-      const res: any = { subject: sName };
+    const mySubjectsList = subjects || [];
+    const peers = Object.values(peersData);
+    
+    return mySubjectsList.map(s => {
+      const res: any = { subject: s.name };
       
-      const myDone = (mySubject?.topics || []).reduce((acc, t) => acc + (t.questionsDone || 0), 0) || 0;
-      const myHits = (mySubject?.topics || []).reduce((acc, t) => acc + (t.questionsCorrect || 0), 0) || 0;
-      res['Você'] = myDone > 0 ? Math.round((myHits / myDone) * 100) : 0;
+      const done = (s.topics || []).reduce((acc, t) => acc + (t.questionsDone || 0), 0) || 0;
+      const hits = (s.topics || []).reduce((acc, t) => acc + (t.questionsCorrect || 0), 0) || 0;
+      res['Você'] = done > 0 ? Math.round((hits / done) * 100) : 0;
 
-      Object.values(peersData).forEach(p => {
-        const peerSubject = (p.subjectsMetrics || []).find((s: any) => s.name === sName);
+      peers.forEach(p => {
+        const peerSubject = (p.subjectsMetrics || []).find((ps: any) => ps.name === s.name);
         res[p.name || p.username] = peerSubject ? Math.round(peerSubject.accuracy) : 0;
       });
 
@@ -243,10 +242,55 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
     return { hours, percent, startOfCurrentWeek };
   }, [studySessions, userProfile.weeklyHours]);
 
+  const weeklyBarData = useMemo(() => {
+    const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+    const start = weeklyStats.startOfCurrentWeek;
+    
+    return days.map((day, i) => {
+      const date = new Date(start);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().slice(0, 10);
+      const session = studySessions.find(s => s.date === dateStr);
+      return {
+        name: day,
+        hours: session ? Number((session.count / 60).toFixed(1)) : 0
+      };
+    });
+  }, [studySessions, weeklyStats.startOfCurrentWeek]);
+
+  const questionStats = useMemo(() => {
+    const done = subjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsDone || 0), 0) || 0), 0);
+    const correct = subjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsCorrect || 0), 0) || 0), 0);
+    const errors = Math.max(0, done - correct);
+    return { done, correct, errors };
+  }, [subjects]);
+
   const handleResetWeek = () => {
     if (confirm('Deseja resetar as horas desta semana? Isso não afetará o progresso total das matérias, apenas a barra de meta semanal.')) {
       setStudySessions(prev => prev.filter(s => startOfDay(parseISO(s.date)) < weeklyStats.startOfCurrentWeek));
       toast.success('Horas da semana resetadas!');
+    }
+  };
+
+  const handleResetAccuracy = () => {
+    if (confirm('Deseja zerar toda a sua precisão geral? Isso apagará a contagem de questões e acertos de todos os tópicos permanentemente.')) {
+      const resetDate = new Date().toISOString();
+      
+      setSubjects(prev => prev.map(s => ({
+        ...s,
+        topics: (s.topics || []).map(t => ({
+          ...t,
+          questionsDone: 0,
+          questionsCorrect: 0
+        }))
+      })));
+
+      setUserProfile((prev: any) => ({
+        ...prev,
+        accuracyResets: [...(prev.accuracyResets || []), resetDate]
+      }));
+
+      toast.success('Precisão geral reiniciada!');
     }
   };
 
@@ -263,31 +307,55 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
   };
 
   const evolutionData = useMemo(() => {
-    if (!studySessions || studySessions.length < 2) return [];
-    const dates = [...studySessions].map(s => s.date).sort();
-
     try {
-      return dates.map(d => {
-        const doneSoFar = (subjects || []).reduce((acc, s) => acc + (s.topics ? s.topics.reduce((ta, t) => ta + (t.questionsDone || 0), 0) : 0), 0);
-        const correctSoFar = (subjects || []).reduce((acc, s) => acc + (s.topics ? s.topics.reduce((ta, t) => ta + (t.questionsCorrect || 0), 0) : 0), 0);
+      // 1. Coleta histórico de questões (snapshots diários)
+      const historyRaw = localStorage.getItem('pobruja-performance-history');
+      const history = historyRaw ? JSON.parse(historyRaw) : [];
+      
+      // 2. Coleta histórico de simulados
+      const simsRaw = localStorage.getItem('pobruja-simulados');
+      const sims = (simsRaw && simsRaw !== 'undefined') ? JSON.parse(simsRaw) : [];
+      
+      // 3. Unifica e ordena as datas
+      const allEntries: any[] = [];
+      
+      // Adiciona simulados como pontos de evolução
+      if (Array.isArray(sims)) {
+        sims.forEach((s: any) => {
+          if (s.date) {
+            allEntries.push({ 
+              date: s.date.slice(0, 10), 
+              done: s.totalQuestions || 0, 
+              hits: s.hits || 0,
+              type: 'simulado'
+            });
+          }
+        });
+      }
 
-        const simsRaw = localStorage.getItem('pobruja-simulados');
-        const sims = (simsRaw && simsRaw !== 'undefined') ? JSON.parse(simsRaw) : [];
-        const simsOnDate = Array.isArray(sims) ? sims.filter((s: any) => s.date && s.date.slice(0, 10) <= d) : [];
-        
-        let totalQ = doneSoFar / (dates.length || 1); 
-        let totalH = correctSoFar / (dates.length || 1);
+      // Adiciona snapshots diários
+      if (Array.isArray(history)) {
+        history.forEach((h: any) => {
+          allEntries.push({ 
+            date: h.date, 
+            done: h.done, 
+            hits: h.hits,
+            type: 'snapshot'
+          });
+        });
+      }
 
-        if (simsOnDate.length > 0) {
-          totalQ = simsOnDate.reduce((a: any, b: any) => a + (b.totalQuestions || 0), 0);
-          totalH = simsOnDate.reduce((a: any, b: any) => a + (b.hits || 0), 0);
-        }
+      if (allEntries.length === 0) return [];
 
-        return {
-          date: d.slice(5).replace('-', '/'),
-          precisao: totalQ > 0 ? Math.round((totalH / totalQ) * 100) : 0
-        };
-      });
+      // Ordena por data
+      const sorted = allEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+      // Mapeia para o formato do gráfico
+      return sorted.map(e => ({
+        date: e.date.slice(5).replace('-', '/'),
+        precisao: e.done > 0 ? Math.round((e.hits / e.done) * 100) : 0,
+        label: e.type === 'simulado' ? 'Simulado' : 'Estudo'
+      }));
     } catch (e) {
       console.error('Evolution data error', e);
       return [];
@@ -366,6 +434,21 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
         </div>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+        <div className="card" style={{ padding: '20px', textAlign: 'center', background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '5px' }}>QUESTÕES TOTAIS</div>
+          <div style={{ fontSize: '24px', fontWeight: '900', color: '#fff' }}>{questionStats.done}</div>
+        </div>
+        <div className="card" style={{ padding: '20px', textAlign: 'center', background: 'rgba(0, 242, 255, 0.05)', borderColor: 'rgba(0, 242, 255, 0.1)' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '5px' }}>ACERTOS TOTAIS</div>
+          <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--success)' }}>{questionStats.correct}</div>
+        </div>
+        <div className="card" style={{ padding: '20px', textAlign: 'center', background: 'rgba(244, 67, 54, 0.05)', borderColor: 'rgba(244, 67, 54, 0.1)' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '5px' }}>ERROS TOTAIS</div>
+          <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--danger)' }}>{questionStats.errors}</div>
+        </div>
+      </div>
+
       <div className="card" style={{ marginBottom: '30px', padding: '25px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h3 style={{ fontSize: '18px' }}>🚀 Progresso da Meta Semanal</h3>
@@ -376,6 +459,13 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
               onClick={handleResetPdfStats}
             >
               LIMPAR DADOS PDF 🗑️
+            </button>
+            <button 
+              className="btn-secondary" 
+              style={{ padding: '4px 12px', fontSize: '10px', color: 'var(--danger)', borderColor: 'rgba(244, 67, 54, 0.3)' }}
+              onClick={handleResetAccuracy}
+            >
+              REINICIAR PRECISÃO ↺
             </button>
             <button 
               className="btn-secondary" 
@@ -393,7 +483,7 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginBottom: '30px' }}>
-        <div className="card" style={{ minHeight: '300px' }}>
+        <div className="card" style={{ height: '450px', overflowY: 'auto' }}>
           <h3 style={{ marginBottom: '20px' }}>📖 Top Disciplinas Estudadas (PDF)</h3>
           {pdfStats.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -420,7 +510,7 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
           )}
         </div>
 
-        <div className="card" style={{ height: '400px' }}>
+        <div className="card" style={{ height: '450px' }}>
           <h3 style={{ marginBottom: '20px' }}>Radar de Afinidade (%)</h3>
           <ResponsiveContainer width="100%" height="90%">
             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
@@ -444,7 +534,7 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginBottom: '30px' }}>
-        <div className="card" style={{ height: '400px', position: 'relative' }}>
+        <div className="card" style={{ height: '450px', position: 'relative' }}>
           <h3 style={{ marginBottom: '20px' }}>Distribuição de Tempo</h3>
           <div style={{ position: 'absolute', top: '55%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', width: '160px' }}>
             <div style={{ fontSize: centralFontSize, fontWeight: '900', color: '#fff', transition: 'font-size 0.3s ease', lineHeight: '1' }}>{formatDuration(totalHoursAll)}</div>
@@ -482,9 +572,9 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
           </ResponsiveContainer>
         </div>
 
-        <div className="card" style={{ marginBottom: '30px', minHeight: '400px' }}>
+        <div className="card" style={{ height: '450px' }}>
           <h3 style={{ marginBottom: '25px' }}>Desempenho por Matéria</h3>
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height="85%">
             <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis dataKey="name" tick={{ fill: 'var(--text-dim)', fontSize: 12 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} />
@@ -496,6 +586,30 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: '30px' }}>
+        <h3 style={{ marginBottom: '25px' }}>📅 Carga Horária da Semana</h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <BarChart data={weeklyBarData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="name" tick={{ fill: 'var(--text-dim)', fontSize: 12 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} />
+            <YAxis tick={{ fill: 'var(--text-dim)', fontSize: 12 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} label={{ value: 'Horas', angle: -90, position: 'insideLeft', fill: 'var(--text-dim)', fontSize: 10 }} />
+            <RechartsTooltip 
+              cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+              contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--primary)', borderRadius: '12px', color: '#fff' }} 
+              formatter={(value: number | undefined) => {
+                if (value === undefined) return ['0min', 'Tempo'];
+                const totalMinutes = Math.round(value * 60);
+                const h = Math.floor(totalMinutes / 60);
+                const m = totalMinutes % 60;
+                if (h === 0) return [`${m}min`, 'Tempo'];
+                return [`${h}h ${m > 0 ? m + 'min' : ''}`, 'Tempo'];
+              }}
+            />
+            <Bar dataKey="hours" fill="var(--primary-light)" radius={[4, 4, 0, 0]} name="Horas Estudadas" />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="card" style={{ marginBottom: '30px' }}>
@@ -513,6 +627,20 @@ export default function StatsDashboard({ userProfile, subjects, studySessions, s
               <YAxis domain={[0, 100]} tick={{ fill: 'var(--text-dim)', fontSize: 12 }} />
               <RechartsTooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--primary)', borderRadius: '12px' }} />
               <Line type="monotone" dataKey="precisao" stroke={isCaveira ? "#ffffff" : "var(--accent)"} strokeWidth={3} dot={{ fill: isCaveira ? "#ffffff" : "var(--accent)", r: 5 }} />
+              
+              {/* Linhas de Reset */}
+              {(userProfile.accuracyResets || []).map((resetDate, idx) => {
+                const formattedResetDate = resetDate.slice(5, 10).replace('-', '/');
+                return (
+                  <ReferenceLine 
+                    key={idx}
+                    x={formattedResetDate} 
+                    stroke="var(--danger)" 
+                    strokeDasharray="3 3" 
+                    label={{ value: 'RESET', position: 'top', fill: 'var(--danger)', fontSize: 10, fontWeight: 'bold' }} 
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         ) : (

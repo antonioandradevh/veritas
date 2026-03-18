@@ -14,6 +14,41 @@ export interface PeerData {
   tafHistory: { name: string; history: { date: string; value: number }[] }[];
 }
 
+const sanitizeString = (str: any) => (typeof str === 'string' ? str.slice(0, 100).replace(/[<>]/g, '') : '');
+const sanitizeNumber = (num: any) => (typeof num === 'number' ? num : 0);
+
+const sanitizePayload = (data: any): PeerData | null => {
+  if (!data || typeof data !== 'object') return null;
+  return {
+    id: sanitizeString(data.id),
+    username: sanitizeString(data.username),
+    name: sanitizeString(data.name),
+    activity: sanitizeString(data.activity),
+    totalHours: sanitizeNumber(data.totalHours),
+    accuracy: sanitizeNumber(data.accuracy),
+    subjectsMetrics: Array.isArray(data.subjectsMetrics) ? data.subjectsMetrics.slice(0, 50).map((s: any) => ({
+      name: sanitizeString(s.name),
+      xp: sanitizeNumber(s.xp),
+      accuracy: sanitizeNumber(s.accuracy)
+    })) : [],
+    essaysHistory: Array.isArray(data.essaysHistory) ? data.essaysHistory.slice(0, 15).map((e: any) => ({
+      date: sanitizeString(e.date),
+      score: sanitizeNumber(e.score)
+    })) : [],
+    simuladosHistory: Array.isArray(data.simuladosHistory) ? data.simuladosHistory.slice(0, 15).map((s: any) => ({
+      date: sanitizeString(s.date),
+      accuracy: sanitizeNumber(s.accuracy)
+    })) : [],
+    tafHistory: Array.isArray(data.tafHistory) ? data.tafHistory.slice(0, 15).map((t: any) => ({
+      name: sanitizeString(t.name),
+      history: Array.isArray(t.history) ? t.history.slice(0, 15).map((h: any) => ({
+        date: sanitizeString(h.date),
+        value: sanitizeNumber(h.value)
+      })) : []
+    })) : []
+  };
+};
+
 export function useP2P(
   myProfile: any, 
   currentView: string, 
@@ -109,17 +144,34 @@ export function useP2P(
     };
   }, []);
 
+  // Auto-reconnect interval
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!peerRef.current || peerRef.current.destroyed) return;
+      const savedPeers = JSON.parse(localStorage.getItem('pobruja-peers-list') || '[]');
+      savedPeers.forEach((targetId: string) => {
+        if (targetId !== peerId) {
+          setConnections(prev => {
+            if (prev.find(c => c.peer === targetId && c.open)) return prev;
+            const conn = peerRef.current!.connect(targetId);
+            setupConnection(conn);
+            return [...prev.filter(c => c.peer !== targetId), conn];
+          });
+        }
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [peerId]);
+
   const setupConnection = (conn: any) => {
     conn.on('open', () => {
       setConnections(prev => {
-        if (prev.find(c => c.peer === conn.peer)) return prev;
-        
+        const filtered = prev.filter((c: any) => c.peer !== conn.peer);
         const savedPeers = JSON.parse(localStorage.getItem('pobruja-peers-list') || '[]');
         if (!savedPeers.includes(conn.peer)) {
           localStorage.setItem('pobruja-peers-list', JSON.stringify([...savedPeers, conn.peer]));
         }
-        
-        return [...prev, conn];
+        return [...filtered, conn];
       });
 
       conn.send({
@@ -129,13 +181,16 @@ export function useP2P(
     });
 
     conn.on('data', (data: any) => {
-      if (data.type === 'status_update') {
-        setPeersData(prev => ({
-          ...prev,
-          [data.data.id]: data.data
-        }));
+      if (data && data.type === 'status_update') {
+        const cleanPayload = sanitizePayload(data.data);
+        if (cleanPayload && cleanPayload.id) {
+          setPeersData(prev => ({
+            ...prev,
+            [cleanPayload.id]: cleanPayload
+          }));
+        }
       }
-      if (data.type === 'disconnect_request') {
+      if (data && data.type === 'disconnect_request') {
         conn.close();
       }
     });
@@ -156,8 +211,8 @@ export function useP2P(
       delete newData[targetId];
       return newData;
     });
-    const savedPeers = JSON.parse(localStorage.getItem('pobruja-peers-list') || '[]');
-    localStorage.setItem('pobruja-peers-list', JSON.stringify(savedPeers.filter((id: string) => id !== targetId)));
+    // We do NOT remove from pobruja-peers-list here so the auto-reconnect can keep trying.
+    // We only remove if the user explicitly disconnects.
   };
 
   const connectToPeer = (targetId: string) => {
@@ -176,6 +231,9 @@ export function useP2P(
       conn.close();
     }
     handlePeerRemoval(targetId);
+    // Explicit disconnect removes from saved list
+    const savedPeers = JSON.parse(localStorage.getItem('pobruja-peers-list') || '[]');
+    localStorage.setItem('pobruja-peers-list', JSON.stringify(savedPeers.filter((id: string) => id !== targetId)));
   };
 
   const broadcastStatus = () => {

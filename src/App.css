@@ -43,7 +43,7 @@
   color: #ffffff !important;
 }
 
-/* Botões brancos no modo caveira */
+/* Botoes brancos no modo caveira */
 .theme-caveira .btn-start, 
 .theme-caveira .onboarding-window .btn-start,
 .theme-caveira .simulado-view .btn-start,
@@ -61,14 +61,14 @@
   border: 1px solid #ffffff !important;
 }
 
-/* Botão de ativação do tema caveira sempre preto */
+/* Botao de ativacao do tema caveira sempre preto */
 .btn-theme-caveira {
   background: #000000 !important;
   color: #ffffff !important;
   border: 1px solid #ffffff !important;
 }
 
-/* Botões de remoção SEM fundo e texto branco */
+/* Botoes de remocao SEM fundo e texto branco */
 .theme-caveira .materials-view button[style*="background: transparent"],
 .theme-caveira .materials-view button[style*="background: none"],
 .theme-caveira .simulado-view button[style*="background: transparent"],
@@ -95,7 +95,7 @@
   font-weight: bold !important;
 }
 
-/* Simulados e Revisões em Vermelho Sangue no Modo Caveira */
+/* Simulados e Revisoes em Vermelho Sangue no Modo Caveira */
 .theme-caveira div[style*="rgba(0, 242, 255, 0.2)"],
 .theme-caveira div[style*="rgba(255, 0, 255, 0.2)"] {
   background: #4a0000 !important;
@@ -302,6 +302,233 @@ body {
   transform: scale(1.3);
   opacity: 1 !important;
 }
+
+/* Dark mode for React Draft Wysiwyg */
+.dark-editor-wrapper {
+  border: 1px solid #333 !important;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1a1a1a !important;
+}
+
+.dark-editor-toolbar {
+  background: #252525 !important;
+  border-bottom: 1px solid #333 !important;
+  padding: 10px !important;
+}
+
+.dark-editor-toolbar .rdw-option-wrapper {
+  background: #333 !important;
+  border: 1px solid #444 !important;
+  color: #fff !important;
+}
+
+.dark-editor-toolbar .rdw-option-wrapper:hover {
+  background: #444 !important;
+}
+
+.dark-editor-toolbar .rdw-option-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.dark-editor-toolbar .rdw-dropdown-wrapper {
+  background: #333 !important;
+  border: 1px solid #444 !important;
+  color: #fff !important;
+}
+
+.dark-editor-toolbar .rdw-dropdown-wrapper:hover {
+  background: #444 !important;
+}
+
+.dark-editor-toolbar .rdw-dropdown-optionwrapper {
+  background: #333 !important;
+  color: #fff !important;
+  border: 1px solid #444 !important;
+}
+
+.dark-editor-toolbar .rdw-dropdown-optionwrapper .rdw-dropdownoption-highlighted {
+  background: #444 !important;
+}
+
+.dark-editor-toolbar .rdw-dropdown-optionwrapper .rdw-dropdownoption-active {
+  background: var(--primary) !important;
+}
+
+.dark-editor-content {
+  padding: 20px !important;
+  background: #1a1a1a !important;
+  color: #fff !important;
+  min-height: 350px !important;
+}
+
+.dark-editor-toolbar img {
+  filter: invert(1);
+}
+
+.rdw-emoji-modal, .rdw-link-modal, .rdw-colorpicker-modal {
+  background: #333 !important;
+  border: 1px solid #444 !important;
+  color: #fff !important;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+}
+
+.rdw-colorpicker-modal-options {
+  background: #333 !important;
+}
+
+.rdw-colorpicker-option {
+  border: 1px solid #444 !important;
+}
+
+/* Modal View Formatted */
+.formatted-view-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.95);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  padding: 40px;
+}
+
+.formatted-view-content {
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  background: #fff;
+  color: #000;
+  padding: 60px;
+  border-radius: 4px;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  line-height: 1.6;
+}
+
+.formatted-view-content h1, 
+.formatted-view-content h2, 
+.formatted-view-content h3 {
+  color: #000 !important;
+  margin-top: 1.5em;
+}
+
+.formatted-view-close {
+  position: absolute;
+  top: 20px;
+  right: 40px;
+  font-size: 30px;
+  color: #fff;
+  cursor: pointer;
+  background: none;
+  border: none;
+  z-index: 10001;
+}
+
+@media print {
+  .formatted-view-overlay {
+    position: static;
+    background: white;
+    padding: 0;
+  }
+  .formatted-view-content {
+    box-shadow: none;
+    padding: 0;
+  }
+  .formatted-view-close {
+    display: none;
+  }
+}
+
+/* Lexical Specific Styles */
+.editor-paragraph {
+  margin: 0 0 8px;
+}
+
+.editor-list-ol {
+  padding: 0;
+  margin: 0 0 0 25px;
+}
+
+.editor-list-ul {
+  padding: 0;
+  margin: 0 0 0 25px;
+}
+
+.editor-listitem {
+  margin: 8px 0;
+}
+
+.editor-heading-h1 {
+  font-size: 24px;
+  color: var(--primary-light);
+  margin: 20px 0 10px;
+  font-weight: 800;
+}
+
+.editor-heading-h2 {
+  font-size: 20px;
+  color: var(--accent);
+  margin: 15px 0 10px;
+  font-weight: 700;
+}
+
+.editor-text-bold {
+  font-weight: bold;
+}
+
+.editor-text-italic {
+  font-style: italic;
+}
+
+.editor-text-underline {
+  text-decoration: underline;
+}
+
+.editor-link {
+  color: var(--primary-light);
+  text-decoration: none;
+}
+
+.editor-link:hover {
+  text-decoration: underline;
+}
+
+.lexical-formatted-view h1 { font-size: 28px; color: #111; margin: 25px 0 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+.lexical-formatted-view h2 { font-size: 24px; color: #222; margin: 20px 0 10px; }
+.lexical-formatted-view h3 { font-size: 20px; color: #333; margin: 18px 0 8px; }
+.lexical-formatted-view h4 { font-size: 18px; color: #444; margin: 16px 0 6px; }
+.lexical-formatted-view h5 { font-size: 16px; color: #555; margin: 14px 0 4px; font-weight: bold; }
+.lexical-formatted-view h6 { font-size: 14px; color: #666; margin: 12px 0 2px; font-weight: bold; text-transform: uppercase; }
+
+/* Editor Specific */
+.editor-heading-h1 { font-size: 28px; font-weight: 900; color: var(--primary-light); margin: 15px 0; }
+.editor-heading-h2 { font-size: 24px; font-weight: 800; color: var(--accent); margin: 12px 0; }
+.editor-heading-h3 { font-size: 20px; font-weight: 700; color: #fff; margin: 10px 0; }
+.editor-heading-h4 { font-size: 18px; font-weight: 700; color: #eee; margin: 8px 0; }
+.editor-heading-h5 { font-size: 16px; font-weight: 700; color: #ddd; margin: 6px 0; }
+.editor-heading-h6 { font-size: 14px; font-weight: 700; color: #ccc; margin: 4px 0; text-transform: uppercase; }
+.editor-quote { border-left: 4px solid var(--primary); padding-left: 20px; color: #888; font-style: italic; margin: 15px 0; }
+
+/* Highlight Boxes */
+.highlight-box {
+  padding: 20px;
+  border-radius: 12px;
+  margin: 20px 0;
+  border-left: 6px solid transparent;
+}
+.highlight-box.important { background: rgba(138, 43, 226, 0.1); border-color: #8a2be2; color: #fff; }
+.highlight-box.law { background: rgba(255, 235, 59, 0.1); border-color: #fdd835; color: #fff; }
+.highlight-box.exam { background: rgba(244, 67, 54, 0.1); border-color: #f44336; color: #fff; }
+
+/* In Formatted View (White BG) */
+.lexical-formatted-view .highlight-box { color: #000; }
+.lexical-formatted-view .highlight-box.important { background: #f3e5f5; }
+.lexical-formatted-view .highlight-box.law { background: #fffde7; }
+.lexical-formatted-view .highlight-box.exam { background: #ffebee; }
 
 @media (max-width: 1024px) {
   .profile-header { flex-direction: column; text-align: center; gap: 30px; }

@@ -32,31 +32,34 @@ export default function Dashboard({
   const [viewingSubjectId, setViewingSubjectId] = useState<string | null>(null);
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [studyModeSelection, setStudyModeSelection] = useState<any | null>(null);
 
   const getSubjectRank = (subject: Subject) => {
-    if (!subject) return { tier: 'Iniciante', rank: 'III', className: 'bronze', xp: 0, nextXp: 1000, minXp: 0 };
+    if (!subject) return { tier: 'Iniciante', rank: 'III', className: 'bronze', xp: 0, nextXp: 500, minXp: 0 };
     const totalMinutes = (subject.topics || []).reduce((acc, t) => acc + (t.minutesSpent || 0), 0);
     const totalCorrect = (subject.topics || []).reduce((acc, t) => acc + (t.questionsCorrect || 0), 0);
-    const xp = (totalMinutes * 1.66) + (totalCorrect * 10); // Ajustado xp por minuto
+    
+    // Sistema mais generoso: 5 XP por minuto e 25 XP por questão correta
+    const xp = (totalMinutes * 5) + (totalCorrect * 25);
 
     const ranks = [
       { tier: 'Iniciante', rank: 'III', minXp: 0, className: 'bronze' },
-      { tier: 'Iniciante', rank: 'II', minXp: 1000, className: 'bronze' },
-      { tier: 'Iniciante', rank: 'I', minXp: 2000, className: 'bronze' },
-      { tier: 'Básico', rank: 'III', minXp: 3000, className: 'prata' },
-      { tier: 'Básico', rank: 'II', minXp: 4000, className: 'prata' },
+      { tier: 'Iniciante', rank: 'II', minXp: 500, className: 'bronze' },
+      { tier: 'Iniciante', rank: 'I', minXp: 1200, className: 'bronze' },
+      { tier: 'Básico', rank: 'III', minXp: 2200, className: 'prata' },
+      { tier: 'Básico', rank: 'II', minXp: 3500, className: 'prata' },
       { tier: 'Básico', rank: 'I', minXp: 5000, className: 'prata' },
-      { tier: 'Competitivo', rank: 'III', minXp: 6800, className: 'ouro' },
-      { tier: 'Competitivo', rank: 'II', minXp: 8500, className: 'ouro' },
-      { tier: 'Competitivo', rank: 'I', minXp: 10000, className: 'ouro' },
-      { tier: 'Intermediário', rank: 'III', minXp: 13000, className: 'platina' },
-      { tier: 'Intermediário', rank: 'II', minXp: 16000, className: 'platina' },
-      { tier: 'Intermediário', rank: 'I', minXp: 20000, className: 'platina' },
-      { tier: 'Avançado', rank: 'III', minXp: 25000, className: 'diamante' },
-      { tier: 'Avançado', rank: 'II', minXp: 30000, className: 'diamante' },
-      { tier: 'Avançado', rank: 'I', minXp: 35000, className: 'diamante' },
-      { tier: 'Especialista', rank: '', minXp: 40000, className: 'mestre' },
-      { tier: 'Mestre da Aprovação', rank: '', minXp: 50000, className: 'desafiante' }
+      { tier: 'Competitivo', rank: 'III', minXp: 7000, className: 'ouro' },
+      { tier: 'Competitivo', rank: 'II', minXp: 9500, className: 'ouro' },
+      { tier: 'Competitivo', rank: 'I', minXp: 12500, className: 'ouro' },
+      { tier: 'Intermediário', rank: 'III', minXp: 16000, className: 'platina' },
+      { tier: 'Intermediário', rank: 'II', minXp: 20000, className: 'platina' },
+      { tier: 'Intermediário', rank: 'I', minXp: 25000, className: 'platina' },
+      { tier: 'Avançado', rank: 'III', minXp: 32000, className: 'diamante' },
+      { tier: 'Avançado', rank: 'II', minXp: 40000, className: 'diamante' },
+      { tier: 'Avançado', rank: 'I', minXp: 50000, className: 'diamante' },
+      { tier: 'Especialista', rank: '', minXp: 65000, className: 'mestre' },
+      { tier: 'Mestre da Aprovação', rank: '', minXp: 85000, className: 'desafiante' }
     ];
 
     let currentRank = ranks[0];
@@ -190,7 +193,7 @@ export default function Dashboard({
     }
   };
 
-  const [selectingMaterialForTopic, setSelectingMaterialForTopic] = useState<any | null>(null);
+  const [selectingMaterialForTopic, setSelectingMaterialForTopic] = useState<{topic: any, isRevision: boolean} | null>(null);
 
   const handleRemoveSubject = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -245,21 +248,6 @@ export default function Dashboard({
       ...s, topics: s.topics.map(t => t.id === tid ? { ...t, status: newStatus } : t)
     } : s));
     toast.success(newStatus === 'completed' ? 'Tópico marcado como dominado! 🏆' : 'Estudo reiniciado!');
-  };
-
-  const handleInitiateStudy = (topic: any) => {
-    if (topic.materials && topic.materials.length > 1) {
-      setSelectingMaterialForTopic(topic);
-    } else {
-      const matUrl = topic.materials && topic.materials.length > 0 ? topic.materials[0].url : '';
-      onStartTask({
-        id: `task-${topic.id}`,
-        subjectId: viewingSubject!.id,
-        subjectName: viewingSubject!.name,
-        topic: topic,
-        type: topic.status === 'todo' ? 'Teoria e Fixação' : 'Domínio e Mapeamento'
-      }, undefined, matUrl);
-    }
   };
 
   const renderSubjectCard = (subject: Subject, isToday: boolean) => {
@@ -360,11 +348,96 @@ export default function Dashboard({
 
   return (
     <div className="dashboard">
+      {studyModeSelection && (
+        <div className="onboarding-overlay" style={{ zIndex: 3500 }}>
+          <div className="onboarding-window" style={{ width: '500px', padding: '40px' }}>
+            <h2 style={{ color: '#fff', marginBottom: '10px' }}>Modo de Estudo</h2>
+            <p style={{ color: 'var(--text-dim)', marginBottom: '30px' }}>{studyModeSelection.name}</p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }}>
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '15px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '15px' }}
+                onClick={() => {
+                  const topic = studyModeSelection;
+                  setStudyModeSelection(null);
+                  localStorage.setItem(`step-${topic.id}`, '1');
+                  if (topic.materials && topic.materials.length > 1) {
+                    setSelectingMaterialForTopic({ topic, isRevision: false });
+                  } else {
+                    const matUrl = topic.materials && topic.materials.length > 0 ? topic.materials[0].url : '';
+                    onStartTask({
+                      id: `task-${topic.id}`,
+                      subjectId: viewingSubject!.id,
+                      subjectName: viewingSubject!.name,
+                      topic: topic,
+                      type: 'Teoria e Fixação'
+                    }, undefined, matUrl);
+                  }
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>📖</span>
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 'bold' }}>Passo 1 e 2 (Teoria e Fixação)</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Abrir PDF ou Videoaula vinculada</div>
+                </div>
+              </button>
+
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '15px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '15px' }}
+                onClick={() => {
+                  const topic = studyModeSelection;
+                  setStudyModeSelection(null);
+                  localStorage.setItem(`step-${topic.id}`, '3');
+                  onStartTask({
+                    id: `task-${topic.id}-q`,
+                    subjectId: viewingSubject!.id,
+                    subjectName: viewingSubject!.name,
+                    topic: topic,
+                    type: 'Domínio e Mapeamento'
+                  });
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>📝</span>
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 'bold' }}>Passo 3 e 4 (Questões e Resumo)</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Focar na resolução de exercícios e anotações</div>
+                </div>
+              </button>
+
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '15px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '15px' }}
+                onClick={() => {
+                  const topic = studyModeSelection;
+                  setStudyModeSelection(null);
+                  localStorage.setItem(`step-${topic.id}`, '5');
+                  onStartTask({
+                    id: `task-${topic.id}-flash`,
+                    subjectId: viewingSubject!.id,
+                    subjectName: viewingSubject!.name,
+                    topic: topic,
+                    type: 'Revisão (Flashcards / Resumo)'
+                  });
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>🗂️</span>
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 'bold' }}>Estudar por Flashcards / Resumo Próprio</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Cronômetro focado para revisão ativa</div>
+                </div>
+              </button>
+            </div>
+            <button className="btn-secondary" style={{ width: '100%' }} onClick={() => setStudyModeSelection(null)}>CANCELAR</button>
+          </div>
+        </div>
+      )}
       {selectingMaterialForTopic && (
         <div className="onboarding-overlay" style={{ zIndex: 3000 }}>
           <div className="onboarding-window" style={{ width: '800px', padding: '40px' }}>
             <h2 style={{ color: '#fff', marginBottom: '10px' }}>Escolha o Material de Estudo</h2>
-            <p style={{ color: 'var(--text-dim)', marginBottom: '30px' }}>{selectingMaterialForTopic.name}</p>
+            <p style={{ color: 'var(--text-dim)', marginBottom: '30px' }}>{selectingMaterialForTopic.topic.name}</p>
             
             <div style={{ 
               display: 'grid', 
@@ -376,17 +449,17 @@ export default function Dashboard({
               textAlign: 'left',
               padding: '10px'
             }}>
-              {selectingMaterialForTopic.materials.map((m: any) => (
+              {selectingMaterialForTopic.topic.materials.map((m: any) => (
                 <div 
                   key={m.id} 
                   className="card" 
                   onClick={() => {
                     onStartTask({
-                      id: `task-${selectingMaterialForTopic.id}`,
+                      id: `task-${selectingMaterialForTopic.topic.id}${selectingMaterialForTopic.isRevision ? '-rev' : ''}`,
                       subjectId: viewingSubject!.id,
                       subjectName: viewingSubject!.name,
-                      topic: selectingMaterialForTopic,
-                      type: selectingMaterialForTopic.status === 'todo' ? 'Teoria e Fixação' : 'Domínio e Mapeamento'
+                      topic: selectingMaterialForTopic.topic,
+                      type: selectingMaterialForTopic.isRevision ? 'Revisão de Conteúdo' : (selectingMaterialForTopic.topic.status === 'todo' ? 'Teoria e Fixação' : 'Domínio e Mapeamento')
                     }, undefined, m.url);
                     setSelectingMaterialForTopic(null);
                   }}
@@ -772,7 +845,7 @@ export default function Dashboard({
                     style={{ padding: '14px 30px', fontSize: '14px' }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleInitiateStudy(topic);
+                      setStudyModeSelection(topic);
                     }}
                   >
                     INICIAR ESTUDO 📖

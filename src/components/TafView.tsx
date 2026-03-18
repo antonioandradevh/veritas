@@ -80,6 +80,16 @@ export default function TafView({ tafExercises, setTafExercises, peersData = {} 
     toast.success('Meta atualizada!');
   };
 
+  const handleDeleteRecord = (recordId: string) => {
+    if (!activeExercise || !confirm('Excluir este registro?')) return;
+    setTafExercises(prev => prev.map(e => 
+      e.id === activeExercise.id 
+        ? { ...e, history: e.history.filter(h => h.id !== recordId) } 
+        : e
+    ));
+    toast.success('Registro removido!');
+  };
+
   const chartData = useMemo(() => {
     if (!activeExercise) return [];
     
@@ -241,11 +251,17 @@ export default function TafView({ tafExercises, setTafExercises, peersData = {} 
               <h3 style={{ marginBottom: '15px' }}>Histórico Recente</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
                 {activeExercise.history.map(h => (
-                  <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 20px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', fontSize: '14px' }}>
+                  <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 20px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', fontSize: '14px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-dim)' }}>{format(new Date(h.date), 'dd/MM/yyyy HH:mm')}</span>
-                    <span style={{ fontWeight: 'bold', color: activeExercise.goal && h.value >= activeExercise.goal ? 'var(--success)' : '#fff' }}>
-                      {h.value} {activeExercise.unit}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <span style={{ fontWeight: 'bold', color: activeExercise.goal && h.value >= activeExercise.goal ? 'var(--success)' : '#fff' }}>
+                        {h.value} {activeExercise.unit}
+                      </span>
+                      <button 
+                        onClick={() => handleDeleteRecord(h.id)}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '16px', padding: '0 5px' }}
+                      >×</button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
+import LexicalEditor from './LexicalEditor';
 import type { Task, UserProfile } from '../App';
 import PdfViewer from './PdfViewer';
 
@@ -43,8 +44,15 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
       return saved[task.subjectId]?.[task.topic.id] || '';
     } catch { return ''; }
   });
-  const [qDone, setQDone] = useState(() => task.topic?.questionsDone || 0);
-  const [qCorrect, setQCorrect] = useState(() => task.topic?.questionsCorrect || 0);
+
+  const [qDone, setQDone] = useState<number | string>(() => {
+    const saved = localStorage.getItem(`qDone-${task.topic.id}`);
+    return saved !== null ? saved : '';
+  });
+  const [qCorrect, setQCorrect] = useState<number | string>(() => {
+    const saved = localStorage.getItem(`qCorrect-${task.topic.id}`);
+    return saved !== null ? saved : '';
+  });
   
   const [timeSpent, setTimeSpent] = useState(() => {
     const saved = localStorage.getItem(`timer-${task.topic.id}`);
@@ -89,7 +97,7 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
     return (localStorage.getItem(`dominioTab-${task.topic.id}`) as any) || 'performance';
   });
 
-  const alarmAudio = useMemo(() => new Audio(ALARM_SOUND), []);
+  const alarmAudio = useRef(new Audio(ALARM_SOUND));
 
   useEffect(() => {
     if (setGlobalActivity) {
@@ -114,11 +122,15 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
     localStorage.setItem(`restInput-${task.topic.id}`, restInput.toString());
     localStorage.setItem(`isVideoMode-${task.topic.id}`, isVideoMode.toString());
     localStorage.setItem(`dominioTab-${task.topic.id}`, dominioTab);
-  }, [step, isResting, restTimeLeft, restInput, isVideoMode, dominioTab, task.topic.id]);
+    localStorage.setItem(`qDone-${task.topic.id}`, qDone.toString());
+    localStorage.setItem(`qCorrect-${task.topic.id}`, qCorrect.toString());
+  }, [step, isResting, restTimeLeft, restInput, isVideoMode, dominioTab, qDone, qCorrect, task.topic.id]);
 
   const playAlarm = () => {
-    alarmAudio.currentTime = 0;
-    alarmAudio.play().catch(() => console.log('Erro ao tocar alarme. Interação necessária.'));
+    if (alarmAudio.current) {
+      alarmAudio.current.currentTime = 0;
+      alarmAudio.current.play().catch(() => console.log('Erro ao tocar alarme. Interação necessária.'));
+    }
   };
 
   useEffect(() => {
@@ -162,7 +174,7 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
   }, [isResting, task.topic.id, userProfile.studyMinutesGoal]);
 
   const clearPersistentState = () => {
-    ['timer', 'step', 'isResting', 'restTimeLeft', 'restInput', 'isVideoMode', 'dominioTab'].forEach(k => {
+    ['timer', 'step', 'isResting', 'restTimeLeft', 'restInput', 'isVideoMode', 'dominioTab', 'qDone', 'qCorrect'].forEach(k => {
       localStorage.removeItem(`${k}-${task.topic.id}`);
     });
   };
@@ -171,7 +183,7 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
     const minutes = manualTime ? Number(manualTime) : Math.floor(timeSpent / 60) || 1; 
     clearPersistentState();
     toast.success(`Sessão Concluída! ${minutes} min.`);
-    onComplete(minutes, qDone, qCorrect, summaryLoc, summaryText);
+    onComplete(minutes, Number(qDone) || 0, Number(qCorrect) || 0, summaryLoc, summaryText);
   };
 
   const formatTime = (seconds: number) => {
@@ -274,6 +286,48 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
             <button className="btn-secondary" style={{ padding: '8px 15px', fontSize: '11px' }} onClick={() => setIsVideoMode(true)}>VIDEOAULA 🎬</button>
             <button className="btn-secondary" style={{ padding: '8px 15px', fontSize: '11px' }} onClick={() => { setRestTimeLeft(restInput * 60); setIsResting(true); }}>PAUSAR ☕</button>
             <button className="btn-secondary" style={{ padding: '8px 15px', fontSize: '11px', color: 'var(--primary-light)' }} onClick={() => onSaveProgress(Math.floor(timeSpent/60))}>SALVAR & SAIR</button>
+            <button className="btn-secondary" style={{ padding: '8px 15px', fontSize: '11px', color: 'var(--danger)' }} onClick={() => { if(window.confirm('Cancelar sessão? O tempo não será salvo nas métricas.')) { clearPersistentState(); onSaveProgress(0); } }}>CANCELAR ✖</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 5 || task.type.includes('Flashcards') || task.type.includes('Resumo Próprio')) {
+    return (
+      <div className="task-execution" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '20px' }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto', width: '100%' }}>
+          <div className="card" style={{ marginBottom: '30px', textAlign: 'center', padding: '60px 40px' }}>
+            <h2 style={{ color: 'var(--primary-light)', marginBottom: '10px' }}>{task.subjectName}</h2>
+            <p style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>{task.topic?.name}</p>
+            <p style={{ color: 'var(--text-dim)', fontSize: '16px', marginTop: '10px' }}>{task.type}</p>
+            
+            <div style={{ fontSize: '120px', fontWeight: '900', color: 'var(--success)', margin: '40px 0', fontFamily: 'monospace' }}>
+              {formatTime(timeSpent)}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '40px' }}>
+              <span style={{ fontSize: '14px', color: 'var(--text-dim)', fontWeight: 'bold' }}>PAUSA (MIN):</span>
+              <input 
+                type="number" 
+                value={restInput} 
+                onChange={e => setRestInput(Number(e.target.value))} 
+                style={{ width: '80px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', textAlign: 'center', padding: '10px', outline: 'none', fontSize: '18px' }} 
+              />
+              <button className="btn-secondary" style={{ padding: '12px 25px', fontSize: '14px' }} onClick={() => { setRestTimeLeft(restInput * 60); setIsResting(true); }}>PAUSAR ☕</button>
+            </div>
+
+            <div style={{ marginBottom: '30px' }}>
+              <h3 style={{ color: 'var(--primary-light)', marginBottom: '15px', fontSize: '16px' }}>ANOTAÇÕES DA REVISÃO</h3>
+              <LexicalEditor initialHtml={summaryText} onChange={setSummaryText} placeholder="Registre aqui os pontos principais revisados..." />
+            </div>
+
+            <button className="btn-start" style={{ width: '100%', padding: '20px', fontSize: '18px' }} onClick={handleFinish}>
+              FINALIZAR SESSÃO E SALVAR
+            </button>
+            <button className="btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '15px', fontSize: '14px', color: 'var(--danger)' }} onClick={() => { if(window.confirm('Cancelar estudo? O tempo e os dados desta sessão serão descartados.')) { clearPersistentState(); onSaveProgress(0); } }}>
+              CANCELAR ESTUDO (DESCARTAR TEMPO)
+            </button>
           </div>
         </div>
       </div>
@@ -360,10 +414,12 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
           </div>
 
           <div className="card">
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button className="btn-secondary" onClick={() => setStep(1)} style={{ flex: 1, fontSize: '11px', borderColor: 'rgba(255,255,255,0.1)' }}>⏪ VOLTAR PARA TEORIA (PASSO 1)</button>
-              <button className="btn-secondary" onClick={() => setStep(2)} style={{ flex: 1, fontSize: '11px', borderColor: 'rgba(255,255,255,0.1)' }}>⏪ VOLTAR PARA FIXAÇÃO (PASSO 2)</button>
-            </div>
+            {!(task.type.includes('Resumo Próprio') || task.type.includes('Flashcards')) && (
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <button className="btn-secondary" onClick={() => setStep(1)} style={{ flex: 1, fontSize: '11px', borderColor: 'rgba(255,255,255,0.1)' }}>⏪ VOLTAR PARA TEORIA (PASSO 1)</button>
+                <button className="btn-secondary" onClick={() => setStep(2)} style={{ flex: 1, fontSize: '11px', borderColor: 'rgba(255,255,255,0.1)' }}>⏪ VOLTAR PARA FIXAÇÃO (PASSO 2)</button>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
               <button className={`btn-secondary ${dominioTab === 'performance' ? 'active' : ''}`} onClick={() => setDominioTab('performance')} style={{ flex: 1, background: dominioTab === 'performance' ? 'var(--primary)' : '' }}>QUESTÕES</button>
@@ -374,21 +430,15 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '10px', fontSize: '12px' }}>RESOLVIDAS</label>
-                  <input type="number" className="modern-input" value={qDone} onChange={e => setQDone(Number(e.target.value))} />
+                  <input type="number" className="modern-input" value={qDone} onChange={e => setQDone(e.target.value)} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '10px', fontSize: '12px' }}>ACERTOS</label>
-                  <input type="number" className="modern-input" value={qCorrect} onChange={e => setQCorrect(Number(e.target.value))} />
+                  <input type="number" className="modern-input" value={qCorrect} onChange={e => setQCorrect(e.target.value)} />
                 </div>
               </div>
             ) : (
-              <textarea 
-                className="modern-input" 
-                style={{ minHeight: '300px' }} 
-                placeholder="Suas anotações importantes..."
-                value={summaryText}
-                onChange={e => setSummaryText(e.target.value)}
-              />
+              <LexicalEditor initialHtml={summaryText} onChange={setSummaryText} placeholder="Suas anotações importantes..." />
             )}
 
             <div style={{ marginTop: '30px' }}>
@@ -398,6 +448,9 @@ export default function TaskExecution({ task, onComplete, onSaveProgress, onRena
 
             <button className="btn-start" style={{ width: '100%', marginTop: '40px', padding: '20px' }} onClick={handleFinish}>
               FINALIZAR SESSÃO E SALVAR
+            </button>
+            <button className="btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '15px', fontSize: '14px', color: 'var(--danger)' }} onClick={() => { if(window.confirm('Cancelar estudo? O tempo e os dados desta sessão serão descartados.')) { clearPersistentState(); onSaveProgress(0); } }}>
+              CANCELAR ESTUDO (DESCARTAR TEMPO)
             </button>
           </div>
         </div>

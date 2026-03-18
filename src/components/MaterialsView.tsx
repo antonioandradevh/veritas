@@ -1,13 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import localforage from 'localforage';
 import type { Subject } from '../App';
 import PdfViewer from './PdfViewer';
 
+// @ts-ignore
+const isElectron = typeof window !== 'undefined' && window.process && window.process.type;
+// @ts-ignore
+const ipc = isElectron ? window.require('electron').ipcRenderer : null;
+
 export default function MaterialsView({ subjects, handleRemoveSubject, handleRemoveTopic, setSubjects }: { subjects: Subject[], handleRemoveSubject: (id: string) => void, handleRemoveTopic: (sid: string, tid: string) => void, setSubjects: React.Dispatch<React.SetStateAction<Subject[]>> }) {
   const [activeMaterial, setActiveMaterial] = useState<{ url: string; name: string } | null>(null);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [tempTopicName, setTempTopicName] = useState('');
+  const [highlightCounts, setHighlightCounts] = useState<Record<string, number>>({});
+  const [syncKeyInput, setSyncKeyInput] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('');
+  const [syncHostId, setSyncHostId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadHighlights = async () => {
+      const counts: Record<string, number> = {};
+      for (const s of subjects) {
+        for (const t of s.topics) {
+          for (const m of (t.materials || [])) {
+            try {
+              const data: any = await localforage.getItem(`study-data-${m.id}`);
+              counts[m.id] = data?.highlights?.length || 0;
+            } catch (e) {}
+          }
+        }
+      }
+      setHighlightCounts(counts);
+    };
+    loadHighlights();
+  }, [subjects]);
 
   const openMaterial = (url: string, name: string) => {
     setActiveMaterial({ url, name });
@@ -15,6 +43,27 @@ export default function MaterialsView({ subjects, handleRemoveSubject, handleRem
 
   const closeMaterial = () => {
     setActiveMaterial(null);
+  };
+
+  const downloadMaterial = async (mid: string, name: string) => {
+    try {
+      const data: any = await localforage.getItem(`pdf-${mid}`);
+      if (!data) return toast.error('Arquivo não encontrado no armazenamento local');
+      
+      if (ipc) {
+        // No Electron, salva na pasta física do programa
+        await ipc.invoke('save-to-local', { fileName: name, buffer: data });
+        toast.success(`Salvo em /veritas_storage/${name}`);
+      } else {
+        // No Navegador, baixa normal
+        const { saveAs } = await import('file-saver');
+        const blob = new Blob([data], { type: 'application/pdf' });
+        saveAs(blob, name);
+        toast.success('Download iniciado!');
+      }
+    } catch (e) {
+      toast.error('Erro ao processar arquivo');
+    }
   };
 
   const handleRemoveMaterial = async (sid: string, tid: string, mid: string) => {
@@ -39,6 +88,12 @@ export default function MaterialsView({ subjects, handleRemoveSubject, handleRem
       try {
         const arrayBuffer = await file.arrayBuffer();
         await localforage.setItem(`pdf-${mId}`, arrayBuffer);
+        
+        // Se for Electron, já garante uma cópia na pasta física também
+        if (ipc) {
+          await ipc.invoke('save-to-local', { fileName: file.name, buffer: arrayBuffer });
+        }
+        
         newMaterials.push({ id: mId, name: file.name, url: `local-${mId}` });
       } catch { toast.error(`Erro ao salvar PDF: ${file.name}`); }
     }
@@ -51,6 +106,117 @@ export default function MaterialsView({ subjects, handleRemoveSubject, handleRem
 
     e.target.value = '';
     toast.success(`${newMaterials.length} arquivo(s) adicionado(s)!`);
+  };
+
+  const startSyncHost = async () => {
+    const { default: Peer } = await import('peerjs');
+    const peer = new Peer();
+    peer.on('open', (id) => {
+      setSyncHostId(id);
+      toast.success('Hospedeiro ativado! Aguardando conexão...');
+    });
+    peer.on('connection', (conn) => {
+      conn.on('data', async (msg: any) => {
+        if (msg.type === 'REQUEST_SYNC') {
+          const lsData = {
+            'pobruja-profile': localStorage.getItem('pobruja-profile'),
+            'pobruja-subjects': localStorage.getItem('pobruja-subjects'),
+            'pobruja-essays': localStorage.getItem('pobruja-essays'),
+            'pobruja-simulados': localStorage.getItem('pobruja-simulados'),
+            'pobruja-taf': localStorage.getItem('pobruja-taf'),
+            'pobruja-sessions': localStorage.getItem('pobruja-sessions'),
+            'pobruja-cycle-config': localStorage.getItem('pobruja-cycle-config'),
+            'pobruja-summaries': localStorage.getItem('pobruja-summaries'),
+            'pobruja-badge': localStorage.getItem('pobruja-badge'),
+            'pobruja-badge2': localStorage.getItem('pobruja-badge2')
+          };
+          conn.send({ type: 'SYNC_LS', data: lsData });
+
+          const lfKeys = await localforage.keys();
+          conn.send({ type: 'SYNC_LF_KEYS', keys: lfKeys });
+        } else if (msg.type === 'REQUEST_LF_ITEM') {
+          const item = await localforage.getItem(msg.key);
+          conn.send({ type: 'SYNC_LF_ITEM', key: msg.key, data: item });
+        }
+      });
+    });
+    peer.on('error', (err) => {
+      toast.error(`Erro no hospedeiro: ${err.message}`);
+    });
+  };
+
+  const handleSync = () => {
+    if (!syncKeyInput) return toast.error('Insira a chave de sincronização');
+    setSyncing(true);
+    setSyncStatus('Conectando...');
+    
+    import('peerjs').then(({ default: Peer }) => {
+      const peer = new Peer();
+      peer.on('open', () => {
+        const conn = peer.connect(syncKeyInput, { reliable: true });
+        
+        conn.on('open', () => {
+          setSyncStatus('Solicitando dados...');
+          conn.send({ type: 'REQUEST_SYNC' });
+        });
+
+        let receivedKeysCount = 0;
+        let totalKeys = 0;
+        let keysList: string[] = [];
+
+        conn.on('data', async (msg: any) => {
+          if (msg.type === 'SYNC_LS') {
+            Object.entries(msg.data).forEach(([k, v]) => {
+              if (v) localStorage.setItem(k, v as string);
+            });
+          } else if (msg.type === 'SYNC_LF_KEYS') {
+            keysList = msg.keys || [];
+            totalKeys = keysList.length;
+            if (totalKeys === 0) {
+              setSyncStatus('Sincronização concluída!');
+              toast.success('Dados sincronizados!');
+              setTimeout(() => window.location.reload(), 1500);
+              return;
+            }
+            setSyncStatus(`Recebendo 0 / ${totalKeys} arquivos...`);
+            conn.send({ type: 'REQUEST_LF_ITEM', key: keysList[0] });
+          } else if (msg.type === 'SYNC_LF_ITEM') {
+            if (msg.data !== null) {
+              await localforage.setItem(msg.key, msg.data);
+              
+              // Se for PDF e estiver no Electron, já salva na pasta física tbm
+              if (ipc && msg.key.startsWith('pdf-')) {
+                const subjs = JSON.parse(localStorage.getItem('pobruja-subjects') || '[]');
+                let originalName = msg.key + '.pdf';
+                subjs.forEach((s:any) => s.topics.forEach((t:any) => t.materials.forEach((m:any) => {
+                  if (m.url === 'local-' + msg.key.replace('pdf-', '')) originalName = m.name;
+                })));
+                await ipc.invoke('save-to-local', { fileName: originalName, buffer: msg.data });
+              }
+            }
+            receivedKeysCount++;
+            setSyncStatus(`Recebendo ${receivedKeysCount} / ${totalKeys} arquivos...`);
+            if (receivedKeysCount < totalKeys) {
+              conn.send({ type: 'REQUEST_LF_ITEM', key: keysList[receivedKeysCount] });
+            } else {
+              setSyncStatus('Sincronização concluída!');
+              toast.success('Tudo sincronizado!');
+              setTimeout(() => window.location.reload(), 1500);
+            }
+          }
+        });
+
+        conn.on('error', () => {
+          setSyncStatus('Erro na conexão.');
+          setSyncing(false);
+        });
+      });
+
+      peer.on('error', (err) => {
+        setSyncStatus(`Erro: ${err.message}`);
+        setSyncing(false);
+      });
+    });
   };
 
   if (activeMaterial) {
@@ -76,6 +242,35 @@ export default function MaterialsView({ subjects, handleRemoveSubject, handleRem
       <p style={{ color: 'var(--text-dim)', marginBottom: '30px' }}>
         Acesse e revise seus PDFs e materiais livremente. Cada tópico pode conter múltiplos arquivos.
       </p>
+
+      {/* PAINEL DE SINCRONIZAÇÃO */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '40px' }}>
+        <div className="card" style={{ padding: '25px', border: '1px solid rgba(138,43,226,0.2)' }}>
+          <h3 style={{ fontSize: '18px', marginBottom: '10px' }}>📤 Modo Hospedeiro</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '20px' }}>Ative para permitir que outro computador baixe seus dados e arquivos.</p>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {syncHostId ? (
+              <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', flex: 1, textAlign: 'center', color: 'var(--success)', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                CHAVE: {syncHostId}
+              </div>
+            ) : (
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={startSyncHost}>GERAR CHAVE DE HOSPEDEIRO</button>
+            )}
+            {ipc && <button className="btn-secondary" onClick={() => ipc.invoke('open-storage-folder')}>ABRIR PASTA FÍSICA 📁</button>}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '25px', border: '1px solid rgba(0,242,255,0.2)' }}>
+          <h3 style={{ fontSize: '18px', marginBottom: '10px' }}>📥 Sincronizar Agora</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '20px' }}>Insira a chave do computador hospedeiro para puxar todos os PDFs e grifos.</p>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <input className="modern-input" placeholder="Chave do Hospedeiro" value={syncKeyInput} onChange={e => setSyncKeyInput(e.target.value)} disabled={syncing} style={{ padding: '10px' }} />
+            <button className="btn-start" onClick={handleSync} disabled={syncing} style={{ padding: '0 20px', whiteSpace: 'nowrap' }}>
+              {syncing ? syncStatus : 'SINCRONIZAR'}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {subjects.length === 0 ? (
         <div className="card" style={{ padding: '50px', borderStyle: 'dashed', textAlign: 'center', color: 'var(--text-dim)' }}>
@@ -173,12 +368,21 @@ export default function MaterialsView({ subjects, handleRemoveSubject, handleRem
                           {topic.materials.map(m => (
                             <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '8px' }}>
                               <span style={{ fontSize: '12px', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}>{m.name}</span>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--primary-light)', padding: '2px 6px', background: 'rgba(138,43,226,0.1)', borderRadius: '4px' }}>
+                                  🖍️ {highlightCounts[m.id] || 0} grifos
+                                </span>
                                 <button 
                                   onClick={() => openMaterial(m.url, m.name)} 
                                   style={{ border: 'none', cursor: 'pointer', color: 'var(--success)', fontSize: '10px', background: 'rgba(0, 242, 255, 0.1)', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}
                                 >
                                   📖 LER
+                                </button>
+                                <button 
+                                  onClick={() => downloadMaterial(m.id, m.name)} 
+                                  style={{ border: 'none', cursor: 'pointer', color: 'var(--primary-light)', fontSize: '10px', background: 'rgba(138, 43, 226, 0.1)', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}
+                                >
+                                  📥 BAIXAR
                                 </button>
                                 <button 
                                   onClick={() => handleRemoveMaterial(subject.id, topic.id, m.id)}

@@ -27,6 +27,45 @@ export default function ProfileView({ userProfile, setUserProfile, subjects, tot
     } catch { return PRESET_THEMES[0].vars; }
   });
 
+  const [syncHostId, setSyncHostId] = useState<string | null>(null);
+
+  const startSyncHost = async () => {
+    const Peer = (await import('peerjs')).default;
+    const peer = new Peer();
+    peer.on('open', (id) => {
+      setSyncHostId(id);
+      toast.success('Hospedeiro de sincronização ativado!');
+    });
+    peer.on('connection', (conn) => {
+      conn.on('data', async (msg: any) => {
+        if (msg.type === 'REQUEST_SYNC') {
+          const lsData = {
+            'pobruja-profile': localStorage.getItem('pobruja-profile'),
+            'pobruja-subjects': localStorage.getItem('pobruja-subjects'),
+            'pobruja-essays': localStorage.getItem('pobruja-essays'),
+            'pobruja-simulados': localStorage.getItem('pobruja-simulados'),
+            'pobruja-taf': localStorage.getItem('pobruja-taf'),
+            'pobruja-sessions': localStorage.getItem('pobruja-sessions'),
+            'pobruja-cycle-config': localStorage.getItem('pobruja-cycle-config'),
+            'pobruja-summaries': localStorage.getItem('pobruja-summaries'),
+            'pobruja-badge': localStorage.getItem('pobruja-badge'),
+            'pobruja-badge2': localStorage.getItem('pobruja-badge2')
+          };
+          conn.send({ type: 'SYNC_LS', data: lsData });
+
+          const lfKeys = await localforage.keys();
+          conn.send({ type: 'SYNC_LF_KEYS', keys: lfKeys });
+        } else if (msg.type === 'REQUEST_LF_ITEM') {
+          const item = await localforage.getItem(msg.key);
+          conn.send({ type: 'SYNC_LF_ITEM', key: msg.key, data: item });
+        }
+      });
+    });
+    peer.on('error', (err) => {
+      toast.error(`Erro: ${err.message}`);
+    });
+  };
+
   useEffect(() => {
     const load = async () => { 
       setBadgeUrl(await localforage.getItem<string>('pobruja-badge')); 
@@ -188,6 +227,18 @@ export default function ProfileView({ userProfile, setUserProfile, subjects, tot
         >
           APLICAR TEMA PERSONALIZADO 🎨
         </button>
+
+        <h3 style={{ marginTop: '40px', marginBottom: '20px' }}>Sincronização de Dispositivos</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: '14px' }}>Deseja enviar seus dados (estatísticas, PDFs, grifos) para outro computador? Ative o modo hospedeiro e insira a chave no outro dispositivo (aba Biblioteca).</p>
+          {syncHostId ? (
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '15px', borderRadius: '12px', fontFamily: 'monospace', fontSize: '18px', color: 'var(--success)', textAlign: 'center' }}>
+              CHAVE: {syncHostId}
+            </div>
+          ) : (
+            <button className="btn-secondary" onClick={startSyncHost}>ATIVAR HOSPEDEIRO DE SINCRONIZAÇÃO</button>
+          )}
+        </div>
       </div>
     </div>
   );

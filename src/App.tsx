@@ -92,6 +92,15 @@ export interface Simulado {
   timeMinutes: number;
 }
 
+export interface RoutineEvent {
+  id: string;
+  name: string;
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
+  type: 'study' | 'work' | 'lunch' | 'leisure' | 'other';
+  days: number[]; // 0-6 (Dom-Sab)
+}
+
 export interface UserProfile {
   name: string;
   username?: string;
@@ -101,6 +110,7 @@ export interface UserProfile {
   studyMinutesGoal?: number;
   restMinutesGoal?: number;
   enablePomodoro?: boolean;
+  routine?: RoutineEvent[];
 }
 
 export interface StudySession {
@@ -146,11 +156,12 @@ function AppContent() {
           studyMinutesGoal: 90, 
           restMinutesGoal: 30, 
           enablePomodoro: true,
+          routine: [],
           ...parsed 
         };
       }
     } catch (e) { console.error(e); }
-    return { name: '', username: '', targetJob: '', weeklyHours: 0, studyMinutesGoal: 90, restMinutesGoal: 30, enablePomodoro: true };
+    return { name: '', username: '', targetJob: '', weeklyHours: 0, studyMinutesGoal: 90, restMinutesGoal: 30, enablePomodoro: true, routine: [] };
   });
   
   const [subjects, setSubjects] = useState<Subject[]>(() => {
@@ -331,14 +342,36 @@ function AppContent() {
   };
 
   const updateTopicPerformance = (subjectId: string, topicId: string, qDone: number, qCorrect: number, sLocation?: string, sText?: string) => {
-    setSubjects(prev => (prev || []).map(s => s.id === subjectId ? {
-      ...s, topics: (s.topics || []).map(t => t.id === topicId ? { 
-        ...t, 
-        questionsDone: qDone, 
-        questionsCorrect: qCorrect, 
-        summaryLocation: sLocation || t.summaryLocation 
-      } : t)
-    } : s));
+    setSubjects(prev => {
+      const newSubjects = (prev || []).map(s => s.id === subjectId ? {
+        ...s, topics: (s.topics || []).map(t => t.id === topicId ? { 
+          ...t, 
+          questionsDone: (t.questionsDone || 0) + qDone, 
+          questionsCorrect: (t.questionsCorrect || 0) + qCorrect, 
+          summaryLocation: sLocation || t.summaryLocation 
+        } : t)
+      } : s);
+
+      // Record historical performance snapshot
+      const today = format(new Date(), 'yyyy-MM-dd');
+      try {
+        const historyRaw = localStorage.getItem('pobruja-performance-history');
+        const history = historyRaw ? JSON.parse(historyRaw) : [];
+        
+        const totalDone = newSubjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsDone || 0), 0) || 0), 0);
+        const totalCorrect = newSubjects.reduce((acc, s) => acc + (s.topics?.reduce((a, t) => a + (t.questionsCorrect || 0), 0) || 0), 0);
+        
+        const existingIdx = history.findIndex((h: any) => h.date === today);
+        if (existingIdx >= 0) {
+          history[existingIdx] = { date: today, done: totalDone, hits: totalCorrect };
+        } else {
+          history.push({ date: today, done: totalDone, hits: totalCorrect });
+        }
+        localStorage.setItem('pobruja-performance-history', JSON.stringify(history.slice(-30))); // Keep last 30 snapshots
+      } catch (e) { console.error('History record error', e); }
+
+      return newSubjects;
+    });
 
     if (sText) {
       try {
@@ -478,8 +511,8 @@ function AppContent() {
 
       <main className="content">
         <Suspense fallback={<div style={{color: '#fff', textAlign: 'center', padding: '100px', fontSize: '24px', fontWeight: 'bold'}}>⚡ INICIANDO SISTEMA...</div>}>
-          {currentView === 'stats' && <StatsDashboard userProfile={userProfile} subjects={subjects} studySessions={studySessions} setStudySessions={setStudySessions} peersData={peersData} />}
-          {currentView === 'calendar' && <CalendarView subjects={subjects} cycleConfig={cycleConfig} setCycleConfig={setCycleConfig} />}
+          {currentView === 'stats' && <StatsDashboard userProfile={userProfile} setUserProfile={setUserProfile} subjects={subjects} setSubjects={setSubjects} studySessions={studySessions} setStudySessions={setStudySessions} peersData={peersData} />}
+          {currentView === 'calendar' && <CalendarView subjects={subjects} cycleConfig={cycleConfig} setCycleConfig={setCycleConfig} userProfile={userProfile} setUserProfile={setUserProfile} />}
           {currentView === 'dashboard' && <Dashboard subjects={subjects} onStartTask={handleStartTask} setSubjects={setSubjects} cycleConfig={cycleConfig} setCycleConfig={setCycleConfig} userProfile={userProfile} setUserProfile={setUserProfile} onViewChange={setCurrentView} peersData={peersData} />}
           {currentView === 'task' && selectedTask && (
             <TaskExecution 
